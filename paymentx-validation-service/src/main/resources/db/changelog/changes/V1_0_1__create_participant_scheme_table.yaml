@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_1-create-participant-scheme-table
+      author: shahbaz
+      comment: >
+        Not every participant supports every scheme - a small community bank
+        might be REAL_TIME_PAYMENT-only and not InstantPayment-certified yet. This is a classic
+        many-to-many junction table: one participant can support multiple
+        schemes, and we need to reject a payment early if the SPECIFIC
+        debtor/creditor bank isn't certified for the scheme the payment
+        is trying to use (e.g. someone tries to send a InstantPayment payment to a
+        bank that only supports REAL_TIME_PAYMENT).
+      changes:
+        - createTable:
+            tableName: participant_scheme
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: participant_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_participant_scheme_participant
+                    references: participant(id)
+              - column:
+                  name: scheme
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: participant_scheme
+            columnNames: participant_id, scheme
+            constraintName: uq_participant_scheme

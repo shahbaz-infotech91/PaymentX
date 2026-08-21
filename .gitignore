@@ -1,0 +1,56 @@
+# Build output (Maven)
+target/
+*.class
+
+# Build output (Node)
+node_modules/
+dist/
+build/
+coverage/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Secrets - NEVER commit these, even local dev ones.
+# Real payment platforms have been breached because a developer committed
+# a .env with "just local" credentials that turned out to be reused in staging.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+application-local.yml
+application-secrets.yml
+
+# Docker
+infra/volumes/
+
+# Runtime / generated artifacts
+temporary/
+tmp/
+runtime/
+generated/
+paymentx-validation-output/
+resilience-tree.txt
+.cc-test-apikey.txt
+
+# Local tool config (not project source)
+.claude/
+**/.scratch-extract/
+
+# Empty scaffold stubs superseded by infra/ and docs/
+/paymentx-infra/
+/paymentx-docs/

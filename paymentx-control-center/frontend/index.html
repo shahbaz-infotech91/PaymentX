@@ -1,0 +1,28 @@
+<!--
+  ENGLISH: The single HTML entry point Vite serves and bundles into.
+  What it does: provides the #root mount node React attaches to and
+  loads src/main.tsx as an ES module. Why it exists: every Vite SPA
+  needs exactly one of these - this is where the whole React app tree
+  begins. How it will communicate with the backend: N/A - static shell,
+  no backend calls happen until React (main.tsx) takes over.
+  HINGLISH: Wahi ek HTML entry point jise Vite serve karta hai aur
+  jisme bundle karta hai. Ye kya karti hai: #root mount node deta hai
+  jisse React attach hota hai aur src/main.tsx ko ek ES module ke roop
+  me load karta hai. Ye dashboard me kyu hai: har Vite SPA ko exactly
+  aisa ek chahiye - yahin se poora React app tree shuru hota hai.
+  Backend se kaise connect hogi: N/A - static shell hai, koi backend
+  call tab tak nahi hoti jab tak React (main.tsx) control na le le.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PaymentX Control Center</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

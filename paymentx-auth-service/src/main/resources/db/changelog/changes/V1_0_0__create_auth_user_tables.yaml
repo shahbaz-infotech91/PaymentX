@@ -1,0 +1,159 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-auth-user-table
+      author: auth-service
+      comment: >
+        Identity + credential in one table (see AuthUser's own javadoc for
+        why this isn't split into a separate credential table).
+        participant_id is a plain string reference to Validation Service's
+        own, already-authoritative participant table - not a duplicate
+        participant model; no foreign key across the database boundary
+        since each PaymentX service owns its own database, matching the
+        platform's established convention.
+      changes:
+        - createTable:
+            tableName: auth_user
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: username
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: password_hash
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: participant_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: enabled
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: failed_login_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            tableName: auth_user
+            columnNames: username
+            constraintName: uq_auth_user_username
+
+        - createIndex:
+            indexName: idx_auth_user_participant_id
+            tableName: auth_user
+            columns:
+              - column:
+                  name: participant_id
+
+  - changeSet:
+      id: V1_0_1-create-auth-user-role-table
+      author: auth-service
+      comment: >
+        A plain (user, role) pair - not a full role/permission model.
+        Real foreign key to auth_user, since both tables live in this
+        same service's own database (unlike participant_id above).
+      changes:
+        - createTable:
+            tableName: auth_user_role
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: role
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: auth_user_role
+            baseColumnNames: user_id
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            constraintName: fk_auth_user_role_user
+
+        - addUniqueConstraint:
+            tableName: auth_user_role
+            columnNames: user_id, role
+            constraintName: uq_auth_user_role

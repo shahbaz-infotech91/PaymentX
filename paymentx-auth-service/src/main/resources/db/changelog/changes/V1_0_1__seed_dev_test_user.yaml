@@ -1,0 +1,50 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_2-seed-dev-test-user
+      author: auth-service
+      comment: >
+        Local development / test-only identity, matching the same
+        "clearly synthetic seed data shipped via Liquibase" convention
+        already used elsewhere in this platform (e.g. Validation
+        Service's own seeded test participants/banks). password_hash is
+        a real BCrypt digest, never a plaintext value - this is a hash,
+        safe to commit, not a secret (the same principle that makes it
+        safe to store any password hash anywhere). participant_id
+        matches an existing, real, already-seeded Validation Service
+        participant is NOT required for this synthetic identity -
+        "TEST-PARTICIPANT-001" is used deliberately as a clearly-fake
+        value for this specific local-only identity, per this task's own
+        instruction.
+      changes:
+        - insert:
+            tableName: auth_user
+            columns:
+              - column:
+                  name: username
+                  value: test-user
+              - column:
+                  name: password_hash
+                  value: "$2a$10$xvXNEYFDCxEFWaAqNpMXbOpyw4LmVGWgvHunteNymG4jeQaZkEGxi"
+              - column:
+                  name: participant_id
+                  value: TEST-PARTICIPANT-001
+              - column:
+                  name: enabled
+                  valueBoolean: true
+              - column:
+                  name: failed_login_count
+                  valueNumeric: 0
+              - column:
+                  name: created_by
+                  value: SYSTEM
+              - column:
+                  name: updated_by
+                  value: SYSTEM
+              - column:
+                  name: version
+                  valueNumeric: 0
+
+        - sql:
+            sql: >
+              INSERT INTO auth_user_role (user_id, role, created_by, updated_by, version)
+              SELECT id, 'USER', 'SYSTEM', 'SYSTEM', 0 FROM auth_user WHERE username = 'test-user';

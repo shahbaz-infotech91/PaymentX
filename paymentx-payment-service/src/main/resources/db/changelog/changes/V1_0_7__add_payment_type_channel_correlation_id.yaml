@@ -1,0 +1,32 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_7-add-payment-type-channel-correlation-id
+      author: shahbaz
+      comment: >
+        Adds three new columns backing PaymentType, PaymentChannel, and
+        correlationId. All three are NOT NULL with no default, which means
+        this changeset would FAIL against a table that already has rows -
+        Liquibase will refuse to add a NOT NULL column without a default
+        to a non-empty table. Since this project has no production data
+        yet, that's acceptable here; a real production migration on a
+        live table would need a two-step rollout (add nullable -> backfill
+        -> add NOT NULL constraint in a later changeset).
+      changes:
+        - addColumn:
+            tableName: payment
+            columns:
+              - column:
+                  name: payment_type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: channel
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: correlation_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false

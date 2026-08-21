@@ -1,0 +1,91 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Reconciliation Service. It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Reconciliation Service ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-reconciliation-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+server:
+  port: 8087
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.reconciliation: DEBUG
+
+paymentx:
+  service-name: Reconciliation Service
+
+reconciliation:
+  cache:
+    internal-transaction-ttl: 7d
+    settlement-metadata-ttl: 7d
+    dedup-ttl: 24h
+  consumer:
+    retry-initial-interval-millis: 1000
+    retry-multiplier: 2.0
+    retry-max-elapsed-millis: 8000
+  matching:
+    settlement-delay-threshold-hours: 24
+    late-settlement-threshold-hours: 72
+    amount-tolerance-threshold: 0.01
+  batch:
+    insert-batch-size: 500
+    scheduled-cron: "0 0 2 * * *"

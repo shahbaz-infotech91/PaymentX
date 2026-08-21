@@ -1,0 +1,30 @@
+{
+  // ENGLISH: TypeScript compiler options for Vite's own config file
+  // (vite.config.ts), which runs under Node, not the browser. What it
+  // does: separate lib/module target from the app config since Node
+  // and browser globals differ. Why it exists: standard Vite React+TS
+  // split - vite.config.ts needs Node types, src/ needs DOM types;
+  // one shared tsconfig would leak the wrong globals into one side or
+  // the other. How it will communicate with the backend: N/A.
+  // HINGLISH: Vite ki apni config file (vite.config.ts) ke liye
+  // TypeScript compiler options, jo Node ke under chalti hai, browser
+  // ke nahi. Ye kya karti hai: app config se alag lib/module target,
+  // kyunki Node aur browser globals alag hote hain. Ye dashboard me
+  // kyu hai: standard Vite React+TS split hai - vite.config.ts ko
+  // Node types chahiye, src/ ko DOM types chahiye; ek shared tsconfig
+  // galat globals ek side ya doosri side me leak kar dega. Backend se
+  // kaise connect hogi: N/A.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true
+  },
+  "include": ["vite.config.ts"]
+}

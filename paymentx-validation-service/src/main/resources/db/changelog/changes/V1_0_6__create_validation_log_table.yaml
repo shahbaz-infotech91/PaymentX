@@ -1,0 +1,94 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_6-create-validation-log-table
+      author: shahbaz
+      comment: >
+        idempotency_record answers "have I seen this reference before?"
+        cheaply (small row, fast lookup). validation_log stores the FULL
+        detail of every decision (amounts, accounts, which rule rejected it)
+        for audit/compliance and for Audit Service to eventually consume.
+        Splitting these two concerns into two tables, rather than one wide
+        table, keeps the hot-path idempotency lookup fast (small row = more
+        rows fit in a Postgres page = fewer disk reads) while still keeping
+        full audit detail elsewhere.
+      changes:
+        - createTable:
+            tableName: validation_log
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: payment_reference
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: trace_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scheme
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: amount
+                  type: DECIMAL(18,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: currency
+                  type: VARCHAR(3)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: debtor_account
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: debtor_bank_id
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: creditor_account
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: creditor_bank_id
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: validation_status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rejection_reason
+                  type: VARCHAR(512)
+              - column:
+                  name: validated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_validation_log_trace_id
+            tableName: validation_log
+            columns:
+              - column:
+                  name: trace_id
+        - createIndex:
+            indexName: idx_validation_log_payment_reference
+            tableName: validation_log
+            columns:
+              - column:
+                  name: payment_reference

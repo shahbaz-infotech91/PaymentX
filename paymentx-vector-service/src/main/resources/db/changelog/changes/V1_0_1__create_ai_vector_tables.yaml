@@ -1,0 +1,309 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_1-create-ai-document-table
+      author: vector-service
+      comment: >
+        The stable identity and lifecycle of one ingested source
+        document - see AiDocument entity javadoc for why documentVersion
+        is a separate column from the standard `version` optimistic-lock
+        column every AuditableEntity-based table already has. The unique
+        constraint on (document_key, document_version) is the real,
+        database-level enforcement behind Step 16/17's upsert semantics
+        and Step 19's "do not accidentally overwrite historical
+        versions" requirement - two different documentVersion values
+        for the same documentKey are two separate rows, always.
+      changes:
+        - createTable:
+            tableName: ai_document
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: document_key
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: document_name
+                  type: VARCHAR(512)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: document_type
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source
+                  type: VARCHAR(128)
+              - column:
+                  name: document_version
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: metadata
+                  type: JSONB
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: ai_document
+            columnNames: document_key, document_version
+            constraintName: uq_ai_document_key_version
+        - createIndex:
+            indexName: idx_ai_document_status
+            tableName: ai_document
+            columns:
+              - column:
+                  name: status
+        - sql:
+            sql: >
+              ALTER TABLE ai_document ADD CONSTRAINT chk_ai_document_status
+              CHECK (status IN ('ACTIVE', 'ARCHIVED'));
+        - sql:
+            sql: >
+              CREATE INDEX idx_ai_document_metadata_gin ON ai_document
+              USING gin (metadata);
+
+  - changeSet:
+      id: V1_0_2-create-ai-document-chunk-table
+      author: vector-service
+      comment: >
+        One vector-searchable slice of an ai_document's real text
+        content - see AiDocumentChunk entity javadoc for why
+        token_count is nullable (never populated in this phase - no
+        real tokenizer exists here, Step 6 explicitly forbids
+        fabricating one). ON DELETE CASCADE on document_id is the real
+        enforcement behind Step 18 ("associated chunks and embeddings
+        must be handled safely... do not leave orphan vectors") -
+        deleting a document's ai_document row removes every one of its
+        chunks (and, via the next changeset's own cascade, their
+        embeddings) in the same statement, at the database level, not
+        via application-code cleanup that could be skipped or fail
+        halfway. The unique constraint on (document_id, chunk_index) is
+        the real enforcement behind Step 16/17's chunk-level upsert
+        semantics.
+      changes:
+        - createTable:
+            tableName: ai_document_chunk
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: document_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ai_document_chunk_document
+                    references: ai_document(id)
+                    deleteCascade: true
+              - column:
+                  name: chunk_index
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: content
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: token_count
+                  type: INT
+              - column:
+                  name: metadata
+                  type: JSONB
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: ai_document_chunk
+            columnNames: document_id, chunk_index
+            constraintName: uq_ai_document_chunk_document_index
+        - createIndex:
+            indexName: idx_ai_document_chunk_document_id
+            tableName: ai_document_chunk
+            columns:
+              - column:
+                  name: document_id
+
+  - changeSet:
+      id: V1_0_3-create-ai-document-embedding-table
+      author: vector-service
+      comment: >
+        The real embedding vector for one ai_document_chunk - see
+        AiDocumentEmbedding entity javadoc (in the Java module, not
+        here) for the full "why vector(1536), why not a separate
+        migration per model, what changing the configured dimension
+        actually requires" reasoning. ON DELETE CASCADE on chunk_id
+        completes Step 18's orphan-prevention chain (document delete ->
+        chunk delete via the previous changeset -> embedding delete via
+        this one, all in the same statement). The unique constraint on
+        (chunk_id, provider, model) - not chunk_id alone - is what makes
+        Step 9's "one chunk can have multiple embeddings if model
+        versioning requires it" real: re-embedding under a NEW model
+        adds a row; re-embedding under the SAME model updates the
+        existing one (enforced the same way Step 16/17's other
+        upserts are).
+      changes:
+        - createTable:
+            tableName: ai_document_embedding
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: chunk_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ai_document_embedding_chunk
+                    references: ai_document_chunk(id)
+                    deleteCascade: true
+              - column:
+                  name: embedding
+                  type: vector(1536)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: provider
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: model
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dimension
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: ai_document_embedding
+            columnNames: chunk_id, provider, model
+            constraintName: uq_ai_document_embedding_chunk_provider_model
+        - createIndex:
+            indexName: idx_ai_document_embedding_chunk_id
+            tableName: ai_document_embedding
+            columns:
+              - column:
+                  name: chunk_id
+        - sql:
+            sql: >
+              ALTER TABLE ai_document_embedding ADD CONSTRAINT chk_ai_document_embedding_dimension
+              CHECK (dimension = 1536);
+        - sql:
+            comment: >
+              Step 11's index-strategy decision: HNSW, not IVFFlat - see
+              PAYMENTX_PHASE_3_5_VECTOR_DATABASE.md §10 for the full
+              reasoning (expected corpus size in the low thousands of
+              chunks, no IVFFlat pre-training-on-an-empty-table problem,
+              better recall/latency at this scale). vector_cosine_ops
+              matches the `<=>` cosine-distance operator
+              AiDocumentEmbeddingRepository's search query actually uses
+              - an HNSW index built with the wrong ops class silently
+              cannot accelerate a query using a different distance
+              operator.
+            sql: >
+              CREATE INDEX idx_ai_document_embedding_vector_hnsw ON ai_document_embedding
+              USING hnsw (embedding vector_cosine_ops);

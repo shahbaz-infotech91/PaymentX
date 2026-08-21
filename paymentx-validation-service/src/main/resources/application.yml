@@ -1,0 +1,62 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Validation Service. It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Validation Service ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-validation-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.validation: DEBUG
+
+paymentx:
+  service-name: Validation Service

@@ -1,0 +1,37 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Prompt Service production profile - all connection details injected
+# via environment variables, no hardcoded secrets, matching every
+# other PaymentX service's application-prod.yml convention exactly.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Prompt Service production profile - har connection detail environment
+# variables se inject hota hai, koi hardcoded secrets nahi, exactly
+# har doosri PaymentX service ke application-prod.yml convention se
+# match karte hue.
+# ====================================================================
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 3000
+
+server:
+  port: 8092
+
+logging:
+  level:
+    com.paymentx.prompt: INFO
+
+management:
+  tracing:
+    sampling:
+      probability: 0.1

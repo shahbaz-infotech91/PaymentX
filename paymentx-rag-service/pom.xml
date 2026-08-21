@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paymentx</groupId>
+        <artifactId>paymentx-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>paymentx-rag-service</artifactId>
+    <packaging>jar</packaging>
+
+    <name>PaymentX RAG Service</name>
+    <description>
+        AI Platform - Phase 3.6. Orchestrates Retrieval-Augmented
+        Generation: embeds a user query (Embedding Service), searches
+        stored knowledge (Vector Service), applies a relevance threshold,
+        builds a bounded, deduplicated context (own ContextBuilder),
+        renders the grounded prompt (Prompt Service), and calls the LLM
+        (LLM Service) for a normalized, source-cited answer - or, if no
+        relevant knowledge exists, returns a truthful
+        INSUFFICIENT_CONTEXT result instead of calling the LLM at all.
+        Owns no database, no provider-specific logic, no vector-search
+        implementation - pure orchestration over four already-built AI
+        Platform services. Does NOT implement document ingestion, MCP,
+        or Agents - see PAYMENTX_PHASE_3_6_RAG_SERVICE.md.
+    </description>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>com.paymentx</groupId>
+            <artifactId>paymentx-common-library</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+
+        <!-- REQUIRED for @CircuitBreaker/@Retry to actually intercept a method call at runtime -
+             resilience4j-spring-boot3 registers its interceptors as real @Aspect classes, and Spring's
+             AOP auto-configuration only activates proxy weaving for them when spring-aop's
+             @EnableAspectJAutoProxy machinery has aspectjweaver's pointcut-expression parser on the
+             classpath. Its absence is silent - no startup error, no missing-bean failure - the
+             annotations simply become no-ops (confirmed live: real Testcontainers/WireMock retry test
+             showed the RetryConfigCustomizer predicate registered at startup but never invoked at
+             call time). A real, platform-wide gap found and fixed during this phase - see
+             PAYMENTX_PHASE_3_6_RAG_SERVICE.md's Known Limitations for the other three AI Platform
+             services (LLM/Embedding/Vector) that carry the same gap and were not modified as part of
+             this phase's scope. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Already an established test dependency in this platform (notification-service,
+             api-gateway, paymentx-llm-service, paymentx-embedding-service) - reused here to test each
+             downstream client (EmbeddingServiceClient/VectorServiceClient/PromptServiceClient/
+             LlmServiceClient) at the real wire level against local stand-ins for the four real AI
+             Platform services this module orchestrates. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.13.2</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,35 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# RAG Service production profile - no hardcoded secrets (this service
+# has none of its own - no API keys, no database credentials - the
+# secrets it depends on transitively belong to Embedding Service/LLM
+# Service, which own them). Downstream service URLs would be overridden
+# per real deployment topology via the same rag.* environment variables
+# application.yml already documents, matching every other PaymentX
+# service's prod profile shape.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# RAG Service production profile - koi hardcoded secrets nahi (is
+# service ka apna koi nahi hai - koi API keys nahi, koi database
+# credentials nahi - jo secrets ye transitively depend karta hai wo
+# Embedding Service/LLM Service ke hain, jo unke malik hain). Downstream
+# service URLs real deployment topology ke hisaab se usi rag.*
+# environment variables se override honge jo application.yml already
+# document karta hai, har doosri PaymentX service ke prod profile shape
+# se match karte hue.
+# ====================================================================
+
+server:
+  port: 8096
+
+logging:
+  level:
+    com.paymentx.rag: INFO
+
+management:
+  tracing:
+    sampling:
+      probability: 0.1

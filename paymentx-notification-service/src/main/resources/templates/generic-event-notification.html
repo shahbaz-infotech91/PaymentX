@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${subject} ?: 'PaymentX Notification'">PaymentX Notification</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+    <table style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 6px; overflow: hidden;">
+        <tr>
+            <td style="background-color: #1a1a2e; padding: 16px 24px;">
+                <span style="color: #ffffff; font-size: 18px; font-weight: bold;">PaymentX</span>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding: 24px;">
+                <h2 style="margin-top: 0; color: #1a1a2e;" th:text="${title} ?: 'Notification'">Notification</h2>
+                <p style="color: #333333; line-height: 1.6;" th:text="${message} ?: ''">Message body.</p>
+
+                <table th:if="${paymentId}" style="margin-top: 16px; width: 100%; border-collapse: collapse;">
+                    <tr th:if="${paymentId}">
+                        <td style="padding: 4px 0; color: #666666; font-size: 13px;">Payment Reference</td>
+                        <td style="padding: 4px 0; color: #1a1a2e; font-size: 13px; text-align: right;" th:text="${paymentId}"></td>
+                    </tr>
+                    <tr th:if="${amount}">
+                        <td style="padding: 4px 0; color: #666666; font-size: 13px;">Amount</td>
+                        <td style="padding: 4px 0; color: #1a1a2e; font-size: 13px; text-align: right;" th:text="${amount}"></td>
+                    </tr>
+                    <tr th:if="${status}">
+                        <td style="padding: 4px 0; color: #666666; font-size: 13px;">Status</td>
+                        <td style="padding: 4px 0; color: #1a1a2e; font-size: 13px; text-align: right;" th:text="${status}"></td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding: 16px 24px; background-color: #f9f9f9; color: #999999; font-size: 11px;">
+                This is an automated notification from PaymentX. Please do not reply to this email.
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

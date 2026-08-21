@@ -1,0 +1,82 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Production-profile overrides for the Control Center backend (Phase 6
+# hardening). What it does: every connection detail below is sourced
+# from an environment variable with NO hardcoded credential default
+# (unlike application.yml's local-dev defaults, which are the real,
+# publicly-documented infra/docker-compose.yml values, not secrets) -
+# matching the exact convention every other PaymentX service's own
+# application-prod.yml already uses (see e.g. paymentx-payment-service).
+# Activate with SPRING_PROFILES_ACTIVE=prod.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Control Center backend ke liye production-profile overrides (Phase 6
+# hardening). Ye kya karti hai: neeche ka har connection detail ek
+# environment variable se aata hai, koi hardcoded credential default
+# nahi (application.yml ke local-dev defaults ke ulat, jo real,
+# publicly-documented infra/docker-compose.yml values hain, secrets
+# nahi) - exactly wahi convention match karte hue jo har doosri
+# PaymentX service ka apna application-prod.yml already use karta hai
+# (jaise paymentx-payment-service dekho). SPRING_PROFILES_ACTIVE=prod
+# se activate karo.
+# ====================================================================
+
+control-center:
+  cors:
+    allowed-origins: ${CONTROL_CENTER_CORS_ALLOWED_ORIGINS}
+  services:
+    api-gateway-url: ${CONTROL_CENTER_SERVICES_API_GATEWAY_URL}
+    auth-service-url: ${CONTROL_CENTER_SERVICES_AUTH_SERVICE_URL}
+    validation-service-url: ${CONTROL_CENTER_SERVICES_VALIDATION_SERVICE_URL}
+    payment-service-url: ${CONTROL_CENTER_SERVICES_PAYMENT_SERVICE_URL}
+    routing-service-url: ${CONTROL_CENTER_SERVICES_ROUTING_SERVICE_URL}
+    audit-service-url: ${CONTROL_CENTER_SERVICES_AUDIT_SERVICE_URL}
+    notification-service-url: ${CONTROL_CENTER_SERVICES_NOTIFICATION_SERVICE_URL}
+    reconciliation-service-url: ${CONTROL_CENTER_SERVICES_RECONCILIATION_SERVICE_URL}
+    reporting-service-url: ${CONTROL_CENTER_SERVICES_REPORTING_SERVICE_URL}
+  postgres:
+    host: ${CONTROL_CENTER_POSTGRES_HOST}
+    port: ${CONTROL_CENTER_POSTGRES_PORT:5432}
+    username: ${CONTROL_CENTER_POSTGRES_USERNAME}
+    password: ${CONTROL_CENTER_POSTGRES_PASSWORD}
+  kafka:
+    bootstrap-servers: ${CONTROL_CENTER_KAFKA_BOOTSTRAP_SERVERS}
+  redis:
+    host: ${CONTROL_CENTER_REDIS_HOST}
+    port: ${CONTROL_CENTER_REDIS_PORT:6379}
+  rabbitmq:
+    management-url: ${CONTROL_CENTER_RABBITMQ_MANAGEMENT_URL}
+    username: ${CONTROL_CENTER_RABBITMQ_USERNAME}
+    password: ${CONTROL_CENTER_RABBITMQ_PASSWORD}
+  prometheus:
+    base-url: ${CONTROL_CENTER_PROMETHEUS_BASE_URL}
+  zipkin:
+    base-url: ${CONTROL_CENTER_ZIPKIN_BASE_URL}
+  mailhog:
+    base-url: ${CONTROL_CENTER_MAILHOG_BASE_URL}
+  files:
+    reports-export-directory: ${CONTROL_CENTER_FILES_REPORTS_EXPORT_DIRECTORY}
+  logs:
+    output-directory: ${CONTROL_CENTER_LOGS_OUTPUT_DIRECTORY}
+  # Production MUST run with the dashboard's own API gated - dashboard-token
+  # has no default anywhere in this repo; DashboardAuthFilter refuses to start
+  # if this is left blank, rather than silently running open.
+  security:
+    enabled: true
+    dashboard-token: ${CONTROL_CENTER_SECURITY_DASHBOARD_TOKEN}
+  # No secret here - just an explicit production lever, same reasoning as application.yml.
+  ai:
+    enabled: ${CONTROL_CENTER_AI_ENABLED:false}
+
+logging:
+  level:
+    root: WARN
+    com.paymentx.controlcenter: INFO
+
+management:
+  endpoint:
+    health:
+      show-details: never

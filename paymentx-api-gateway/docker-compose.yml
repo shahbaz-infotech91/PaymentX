@@ -1,0 +1,19 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Local development infrastructure definition - spins up Postgres,
+# Kafka, Redis, and supporting tools (Kafka UI, pgAdmin, Zipkin,
+# Prometheus) so every PaymentX service has real dependencies to run
+# against locally, without needing cloud infrastructure.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Local development infrastructure ka definition - Postgres, Kafka,
+# Redis, aur supporting tools (Kafka UI, pgAdmin, Zipkin, Prometheus)
+# start karta hai, taaki har PaymentX service ke paas local me chalne
+# ke liye real dependencies ho, cloud infrastructure ki zaroorat nahi.
+# ====================================================================
+
+services:
+  

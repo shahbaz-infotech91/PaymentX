@@ -1,0 +1,131 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-payment-table
+      author: shahbaz
+      comment: >
+        The core payment record - one row per payment, mutated as it moves
+        through its state machine (see PaymentStatus enum). idempotency_key
+        is DELIBERATELY separate from payment_reference: payment_reference
+        is the business identifier the bank sent us (already deduplicated
+        once by Validation Service); idempotency_key is derived from the
+        Kafka event's own eventId, guarding against THIS service processing
+        the same Kafka message twice if it gets redelivered (Kafka's
+        at-least-once delivery guarantee). Two different failure modes,
+        two different keys - collapsing them into one column would hide
+        which layer actually caught a given duplicate.
+      changes:
+        - createTable:
+            tableName: payment
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: payment_reference
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: idempotency_key
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: trace_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scheme
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: amount
+                  type: DECIMAL(18,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: currency
+                  type: VARCHAR(3)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: debtor_account
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: debtor_bank_id
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: creditor_account
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: creditor_bank_id
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: failure_reason
+                  type: VARCHAR(512)
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        # Hot-path index: the retry scheduler and monitoring dashboards
+        # constantly query "give me all payments currently in status X" -
+        # without this index that's a full table scan on a table that
+        # grows unboundedly (every payment ever processed).
+        - createIndex:
+            indexName: idx_payment_status
+            tableName: payment
+            columns:
+              - column:
+                  name: status
+        - createIndex:
+            indexName: idx_payment_trace_id
+            tableName: payment
+            columns:
+              - column:
+                  name: trace_id

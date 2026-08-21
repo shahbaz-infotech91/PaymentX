@@ -1,0 +1,43 @@
+{
+  // ENGLISH: TypeScript compiler options for the actual React app
+  // source (src/). What it does: enables strict type-checking, React
+  // 19's automatic JSX runtime, and ES module resolution matching
+  // Vite's bundler. Why it exists: strict:true is deliberate - "no
+  // TypeScript errors" is an explicit Phase 1 requirement, and strict
+  // mode is what actually enforces that rather than just hoping. How
+  // it will communicate with the backend: N/A - build-time only.
+  // HINGLISH: Actual React app source (src/) ke liye TypeScript
+  // compiler options. Ye kya karti hai: strict type-checking, React
+  // 19 ka automatic JSX runtime, aur Vite ke bundler se match karta
+  // ES module resolution enable karti hai. Ye dashboard me kyu hai:
+  // strict:true jaan-bujhkar hai - "no TypeScript errors" ek explicit
+  // Phase 1 requirement hai, aur strict mode hi actually usko enforce
+  // karta hai, sirf hope karne ke bajaye. Backend se kaise connect
+  // hogi: N/A - sirf build-time.
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src"]
+}

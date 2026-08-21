@@ -1,0 +1,164 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-audit-event-table
+      author: audit-service
+      comment: >
+        Core immutable audit trail table. Partition-ready design:
+        UUID primary key (no auto-increment sequence, which would
+        conflict with native Postgres range partitioning later),
+        occurred_at is indexed and would be the natural partition key
+        (RANGE partitioning by month/quarter is the standard approach
+        for an append-only, time-ordered, ever-growing audit table -
+        deferred to an actual DBA-reviewed migration when data volume
+        warrants it, not implemented here to avoid a large,
+        higher-risk schema change beyond this task's scope). No
+        foreign keys to other tables/services by design - audit_event
+        is intentionally decoupled from the tables it describes, since
+        an audit record for a payment must remain queryable even if
+        the payment itself is later purged/archived.
+      changes:
+        - createTable:
+            tableName: audit_event
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: event_type
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: event_status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_service
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_event_id
+                  type: VARCHAR(64)
+              - column:
+                  name: actor_id
+                  type: VARCHAR(128)
+              - column:
+                  name: actor_type
+                  type: VARCHAR(32)
+              - column:
+                  name: correlation_id
+                  type: VARCHAR(64)
+              - column:
+                  name: trace_id
+                  type: VARCHAR(64)
+              - column:
+                  name: payment_id
+                  type: VARCHAR(64)
+              - column:
+                  name: participant_id
+                  type: VARCHAR(64)
+              - column:
+                  name: reference
+                  type: VARCHAR(128)
+              - column:
+                  name: payload
+                  type: JSONB
+              - column:
+                  name: occurred_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        # Idempotency: a redelivered Kafka message must never produce a
+        # second row for the same source event. NULL source_event_id
+        # (direct-API-write path) is exempt from uniqueness by Postgres's
+        # standard NULL-is-distinct-from-NULL semantics.
+        - addUniqueConstraint:
+            tableName: audit_event
+            columnNames: source_event_id
+            constraintName: uq_audit_event_source_event_id
+
+        - createIndex:
+            indexName: idx_audit_event_correlation_id
+            tableName: audit_event
+            columns:
+              - column:
+                  name: correlation_id
+        - createIndex:
+            indexName: idx_audit_event_payment_id
+            tableName: audit_event
+            columns:
+              - column:
+                  name: payment_id
+        - createIndex:
+            indexName: idx_audit_event_participant_id
+            tableName: audit_event
+            columns:
+              - column:
+                  name: participant_id
+        - createIndex:
+            indexName: idx_audit_event_reference
+            tableName: audit_event
+            columns:
+              - column:
+                  name: reference
+        - createIndex:
+            indexName: idx_audit_event_occurred_at
+            tableName: audit_event
+            columns:
+              - column:
+                  name: occurred_at
+        - createIndex:
+            indexName: idx_audit_event_type_status
+            tableName: audit_event
+            columns:
+              - column:
+                  name: event_type
+              - column:
+                  name: event_status
+
+        - sql:
+            sql: >
+              ALTER TABLE audit_event ADD CONSTRAINT chk_audit_event_type
+              CHECK (event_type IN ('PAYMENT_CREATED','PAYMENT_UPDATED','PAYMENT_ROUTED',
+              'PAYMENT_COMPLETED','PAYMENT_FAILED','PAYMENT_CANCELLED','PAYMENT_REFUNDED',
+              'VALIDATION_COMPLETED','PARTICIPANT_UPDATED','ROUTING_RULE_CHANGED',
+              'SECURITY_EVENT','API_REQUEST','API_RESPONSE','SYSTEM_EVENT','KAFKA_EVENT'));
+        - sql:
+            sql: >
+              ALTER TABLE audit_event ADD CONSTRAINT chk_audit_event_status
+              CHECK (event_status IN ('RECORDED','PROCESSING_FAILED','ARCHIVED'));

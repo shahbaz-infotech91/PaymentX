@@ -1,0 +1,81 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-source-event-table
+      author: reporting-service
+      comment: >
+        The shared aggregation substrate every ReportGenerator queries -
+        see SourceEvent entity's javadoc for the full rationale.
+        Partition-ready: UUID PK (no sequence conflicting with future
+        range-partitioning by occurred_at), indexed occurred_at as the
+        natural partition key.
+      changes:
+        - createTable:
+            tableName: source_event
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: source_service
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: event_type
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: payment_id
+                  type: VARCHAR(64)
+              - column:
+                  name: reference_id
+                  type: VARCHAR(128)
+              - column:
+                  name: participant_id
+                  type: VARCHAR(64)
+              - column:
+                  name: amount
+                  type: DECIMAL(19,4)
+              - column:
+                  name: currency
+                  type: VARCHAR(3)
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+              - column:
+                  name: correlation_id
+                  type: VARCHAR(64)
+              - column:
+                  name: source_event_id
+                  type: VARCHAR(64)
+              - column:
+                  name: occurred_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            indexName: idx_source_event_service_occurred
+            tableName: source_event
+            columns:
+              - column:
+                  name: source_service
+              - column:
+                  name: occurred_at
+        - createIndex:
+            indexName: idx_source_event_payment_id
+            tableName: source_event
+            columns:
+              - column:
+                  name: payment_id
+        - createIndex:
+            indexName: idx_source_event_correlation_id
+            tableName: source_event
+            columns:
+              - column:
+                  name: correlation_id

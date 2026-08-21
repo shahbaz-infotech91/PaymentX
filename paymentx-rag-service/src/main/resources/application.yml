@@ -1,0 +1,182 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Runtime configuration for RAG Service. Configures the web server,
+# observability, downstream service URLs, and search/context bounds
+# this service reads on startup. Port 8096 is the next free port in the
+# AI Platform range (8091-8097, see PAYMENTX_PHASE_3_ARCHITECTURE.md
+# §16) after Prompt Service (8092), LLM Service (8093), Embedding
+# Service (8094), Vector Service (8095) - originally suggested for a
+# future MCP Gateway, reassigned here since RAG Service became its own
+# phase (3.6) before MCP Gateway exists (matching the exact same
+# port-reassignment precedent Vector Service already set in Phase 3.5).
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# RAG Service ki runtime configuration. Web server, observability,
+# downstream service URLs, aur search/context bounds configure karta hai
+# jo startup pe padhe jaate hain. Port 8096 AI Platform range
+# (8091-8097, PAYMENTX_PHASE_3_ARCHITECTURE.md §16 dekho) ka agla free
+# port hai Prompt Service (8092), LLM Service (8093), Embedding Service
+# (8094), Vector Service (8095) ke baad - originally ek future MCP
+# Gateway ke liye suggest kiya gaya tha, yahan reassign kiya gaya kyunki
+# RAG Service MCP Gateway se pehle apna phase (3.6) ban gaya (Vector
+# Service ne Phase 3.5 me already set kiya wahi exact port-reassignment
+# precedent match karte hue).
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-rag-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8096
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.rag: DEBUG
+
+paymentx:
+  service-name: RAG Service
+
+# The four already-built AI Platform services this service orchestrates - real host-process URLs,
+# matching every service's own local-dev port. embeddingProvider/embeddingModel are the ONE source of
+# truth passed to both Embedding Service and Vector Service's search call (Step 10 - model
+# compatibility) - see RagProperties' javadoc.
+rag:
+  embedding-service-url: http://localhost:8094
+  vector-service-url: http://localhost:8095
+  prompt-service-url: http://localhost:8092
+  llm-service-url: http://localhost:8093
+  # Phase 3.10.2 RAG audit layer - the same real Audit Service (Phase 1) MCP Gateway's own
+  # McpAuditClient already calls; short, un-retried timeouts so a downed Audit Service never
+  # materially degrades real RAG query latency (fail-open - see RagAuditClient's javadoc).
+  audit-service-url: ${RAG_AUDIT_SERVICE_URL:http://localhost:8085}
+  audit-write-connect-timeout-ms: 2000
+  audit-write-read-timeout-ms: 3000
+  # Phase 3.5 vector database migration: updated from openai/text-embedding-3-small to match Phase
+  # 3.4's local Embedding Service default - this is the exact provider/model string Vector Service's
+  # search filters on (WHERE e.provider = :provider AND e.model = :model), so a stale value here would
+  # make RAG retrieve zero results even after the vector(384) schema migration - confirmed for real
+  # during this phase (retrievedChunks: 0 with the old "openai" value, despite a dimension-valid query).
+  embedding-provider: ${RAG_EMBEDDING_PROVIDER:local}
+  embedding-model: ${RAG_EMBEDDING_MODEL:sentence-transformers/all-MiniLM-L6-v2}
+  rag-prompt-key: PAYMENTX_KNOWLEDGE_ASSISTANT
+  default-top-k: 5
+  max-top-k: 20
+  min-score: 0.5
+  max-context-chunks: 5
+  max-context-characters: 8000
+  embedding-connect-timeout-ms: 3000
+  embedding-read-timeout-ms: 10000
+  vector-connect-timeout-ms: 3000
+  vector-read-timeout-ms: 10000
+  prompt-connect-timeout-ms: 3000
+  prompt-read-timeout-ms: 10000
+  llm-connect-timeout-ms: 3000
+  llm-read-timeout-ms: 60000
+
+# One real Resilience4j instance per downstream dependency - see config/ResilienceConfig.java's javadoc
+# for why four, not one shared instance, and why each RetryConfigCustomizer predicate (not YAML
+# retry-exceptions/ignore-exceptions) decides what actually retries. llmService's wait/timeout budget is
+# deliberately larger than the other three, matching LLM Service's own read-timeout headroom (a real LLM
+# generation call legitimately takes longer than an embedding/search/render call).
+resilience4j:
+  circuitbreaker:
+    instances:
+      embeddingService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      vectorService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      promptService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      llmService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      embeddingService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      vectorService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      promptService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      llmService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true

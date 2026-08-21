@@ -1,0 +1,25 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_1-create-report-table
+      author: reporting-service
+      comment: The report-type catalog.
+      changes:
+        - createTable:
+            tableName: report
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: report_type, type: VARCHAR(32), constraints: { nullable: false, unique: true } }
+              - column: { name: display_name, type: VARCHAR(128), constraints: { nullable: false } }
+              - column: { name: description, type: VARCHAR(1024) }
+              - column: { name: active, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: created_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: updated_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - sql:
+            sql: >
+              ALTER TABLE report ADD CONSTRAINT chk_report_type
+              CHECK (report_type IN ('PAYMENT_SUMMARY','SETTLEMENT_SUMMARY','PARTICIPANT_SUMMARY',
+              'TRANSACTION_VOLUME','FAILED_TRANSACTIONS','SUCCESS_RATE','NOTIFICATION_SUMMARY',
+              'AUDIT_SUMMARY','ROUTING_SUMMARY','VALIDATION_SUMMARY','RECONCILIATION_SUMMARY'));

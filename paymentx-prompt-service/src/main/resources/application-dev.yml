@@ -1,0 +1,68 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Prompt Service local development profile - Postgres on localhost.
+# Connects to the new, shared `paymentx_ai` database (added to
+# infra/docker-compose.yml's POSTGRES_MULTIPLE_DATABASES list and
+# infra/init-scripts) rather than a dedicated `paymentx_prompt`
+# database - a deliberate, documented deviation from the one-DB-
+# per-service convention every business service uses, per
+# PAYMENTX_PHASE_3_ARCHITECTURE.md §6: the AI Platform's several small
+# components (Prompt/LLM/Embedding/RAG/MCP Gateway/Agent Orchestrator)
+# are one cohesive new platform vertical, not independent bounded
+# business contexts, so one shared database (each service owning only
+# its own tables via its own Liquibase changelog) avoids operational
+# bloat from N near-empty databases.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Prompt Service local development profile - Postgres localhost par.
+# Naye, shared `paymentx_ai` database se connect karta hai
+# (infra/docker-compose.yml ki POSTGRES_MULTIPLE_DATABASES list aur
+# infra/init-scripts me add kiya gaya) ek dedicated `paymentx_prompt`
+# database ke bajaye - ek jaan-boojh kar, documented deviation har
+# business service ke one-DB-per-service convention se,
+# PAYMENTX_PHASE_3_ARCHITECTURE.md §6 ke hisaab se: AI Platform ke
+# kai chhote components (Prompt/LLM/Embedding/RAG/MCP Gateway/Agent
+# Orchestrator) ek cohesive naya platform vertical hain, independent
+# bounded business contexts nahi, isliye ek shared database (har
+# service apni khud ki Liquibase changelog se sirf apni tables ka
+# malik) N near-empty databases ke operational bloat se bachata hai.
+# ====================================================================
+
+spring:
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/paymentx_ai
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    # Regression-remediation fix: same real, measured root cause as audit-service's own
+    # identical comment - HikariCP's unconfigured default (10 max / 10 idle) held 10
+    # permanently idle connections against the shared dev Postgres instance regardless of
+    # load, contributing to real max_connections exhaustion. Pool tuning only, no business
+    # logic change.
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    org.springframework: INFO

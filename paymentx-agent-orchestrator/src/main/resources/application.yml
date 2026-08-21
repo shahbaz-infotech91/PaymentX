@@ -1,0 +1,214 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Runtime configuration for Agent Orchestrator. Configures the web
+# server, observability, the real downstream AI Platform service URLs
+# this agent calls (RAG Service, MCP Gateway, Prompt Service, LLM
+# Service), and the bounded execution limits (Step 10) every agent run
+# is subject to. Port 8098 is the next free port in the AI Platform
+# range after Prompt Service (8092), LLM Service (8093), Embedding
+# Service (8094), Vector Service (8095), RAG Service (8096), MCP
+# Gateway (8097) - matching the exact port-reassignment precedent every
+# prior AI Platform phase already set (each successive phase reuses the
+# next free slot in PAYMENTX_PHASE_3_ARCHITECTURE.md §16's original
+# 8091-8097 allocation, extended by one).
+#
+# `agent.mcp-roles` is the fixed, configured, read-only role set Agent
+# Orchestrator presents to MCP Gateway on every tool call - its OWN
+# service-level grant for the AI Chat feature's read-only lookups, the
+# same kind of self-asserted internal-service credential MCP Gateway's
+# own McpAuditClient already uses for its audit writes (see that
+# class's javadoc in paymentx-mcp-gateway, Phase 3.7). This is
+# deliberately never elevated beyond the four real READ permissions
+# that exist (PAYMENT_READ/ROUTING_READ/RECONCILIATION_READ/
+# AUDIT_READ) - there is no per-dashboard-user role/participant
+# identity anywhere in this platform yet (PAYMENTX_PHASE_3_ARCHITECTURE.md
+# §1's "no real platform-wide identity system yet" finding), so this is
+# an honest, minimal-scope choice, not an invented stronger guarantee.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Agent Orchestrator ki runtime configuration. Web server, observability,
+# real downstream AI Platform service URLs jo ye agent call karta hai
+# (RAG Service, MCP Gateway, Prompt Service, LLM Service), aur bounded
+# execution limits (Step 10) jo har agent run ke saath apply hote hain,
+# configure karta hai. Port 8098 AI Platform range ka agla free port hai
+# Prompt Service (8092), LLM Service (8093), Embedding Service (8094),
+# Vector Service (8095), RAG Service (8096), MCP Gateway (8097) ke baad
+# - exactly wahi port-reassignment precedent match karte hue jo har
+# pichla AI Platform phase already set kar chuka hai.
+#
+# `agent.mcp-roles` wo fixed, configured, read-only role set hai jise
+# Agent Orchestrator MCP Gateway ko har tool call par present karta hai
+# - AI Chat feature ke read-only lookups ke liye uska apna service-level
+# grant, wahi kism ka self-asserted internal-service credential jo MCP
+# Gateway ka apna McpAuditClient apne audit writes ke liye already use
+# karta hai (us class ka javadoc paymentx-mcp-gateway me dekho, Phase
+# 3.7). Ye jaan-boojh kar un chaar real READ permissions se kabhi upar
+# nahi jaata jo exist karte hain (PAYMENT_READ/ROUTING_READ/
+# RECONCILIATION_READ/AUDIT_READ) - is platform me abhi kahin bhi ek
+# per-dashboard-user role/participant identity nahi hai
+# (PAYMENTX_PHASE_3_ARCHITECTURE.md §1 ka "abhi koi real platform-wide
+# identity system nahi hai" finding), isliye ye ek honest, minimal-scope
+# choice hai, ek invented stronger guarantee nahi.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-agent-orchestrator
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8098
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.agent: DEBUG
+
+paymentx:
+  service-name: Agent Orchestrator
+
+agent:
+  rag-service-url: http://localhost:8096
+  mcp-gateway-url: http://localhost:8097
+  prompt-service-url: http://localhost:8092
+  llm-service-url: http://localhost:8093
+  audit-service-url: http://localhost:8085
+  agent-prompt-key: PAYMENTX_AGENT_ORCHESTRATOR
+
+  # Step 10 - configurable, never hardcoded through the code.
+  max-iterations: 5
+  max-tool-calls: 10
+  max-tools-per-iteration: 1
+  max-context-characters: 12000
+  # Phase 3.9 incremental re-validation fix - was 45000ms. RAG Service's own real budget for a single
+  # query is bounded by ITS llm-read-timeout-ms (60000ms, see rag-read-timeout-ms below and RAG's own
+  # application.yml) - a single RAG call can legitimately take close to 60s when Anthropic's real API
+  # is transiently overloaded and LLM Service's own resilience retry kicks in. Discovered via a real
+  # live E2E run in this phase: a genuine (non-erroring) request hit a real Anthropic 529 "Overloaded"
+  # response, LLM Service's retry succeeded but took 24.7s/45.7s on two concurrent real calls, and this
+  # 45000ms overall budget cut the agent run off as TIMEOUT before RAG's own real, in-flight, eventually-
+  # successful response ever came back. 75000ms gives real headroom above a single worst-case RAG call
+  # (raised to 65000ms below) without being unbounded - same "downstream budget + headroom" pattern
+  # ControlCenterProperties.Ai.readTimeoutMs's own Phase 3.9 fix already established one layer up.
+  overall-timeout-ms: 75000
+
+  rag-connect-timeout-ms: 3000
+  # Phase 3.9 incremental re-validation fix - was 20000ms, shorter than RAG Service's OWN configured
+  # llm-read-timeout-ms (60000ms) for its own downstream LLM call - meaning this client gave up on a
+  # healthy, still-working RAG request before RAG's own timeout budget would ever expire. Real root
+  # cause and evidence: see overall-timeout-ms's comment above (real Anthropic 529 overload, real
+  # RagServiceClient "Read timed out" log lines at exactly ~20s). 65000ms gives real headroom above
+  # RAG's own 60000ms budget.
+  rag-read-timeout-ms: 65000
+  mcp-connect-timeout-ms: 3000
+  mcp-read-timeout-ms: 10000
+  prompt-connect-timeout-ms: 3000
+  prompt-read-timeout-ms: 10000
+  llm-connect-timeout-ms: 3000
+  llm-read-timeout-ms: 60000
+
+  # See class-level javadoc above - a fixed, minimal, read-only service credential, never per-user.
+  mcp-roles: PAYMENT_READ,ROUTING_READ,RECONCILIATION_READ,AUDIT_READ
+
+# One real Resilience4j instance per downstream dependency (rag/mcp/prompt/llm) - same "four separate
+# instances, not one shared instance" + RetryConfigCustomizer-reads-a-per-instance-retryable-flag pattern
+# every prior AI Platform phase already established (see config/ResilienceConfig.java's javadoc).
+resilience4j:
+  circuitbreaker:
+    instances:
+      ragService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      mcpGateway:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      promptService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      llmService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      ragService:
+        max-attempts: 2
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      mcpGateway:
+        max-attempts: 2
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      promptService:
+        max-attempts: 2
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      llmService:
+        max-attempts: 2
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true

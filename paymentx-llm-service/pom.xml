@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paymentx</groupId>
+        <artifactId>paymentx-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>paymentx-llm-service</artifactId>
+    <packaging>jar</packaging>
+
+    <name>PaymentX LLM Service</name>
+    <description>
+        AI Platform - Phase 3.3. Receives a rendered prompt, calls a
+        configured LLM provider through a provider-abstraction layer,
+        normalizes the response, and handles timeout/retry/circuit-
+        breaking. Deliberately stateless - no database. Does NOT
+        implement RAG, embeddings, a vector database, MCP, or agents -
+        see PAYMENTX_PHASE_3_3_LLM_SERVICE.md.
+    </description>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>com.paymentx</groupId>
+            <artifactId>paymentx-common-library</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+
+        <!-- REQUIRED for @CircuitBreaker/@Retry to actually intercept a method call at runtime -
+             resilience4j-spring-boot3 registers its interceptors as real @Aspect classes; Spring's AOP
+             proxy weaving for them only activates when aspectjweaver's pointcut-expression parser is on
+             the classpath. Its absence is silent - no startup error, no missing-bean failure, the
+             annotations simply become no-ops. Found live during Phase 3.6 (paymentx-rag-service) via a
+             real end-to-end retry test that proved AnthropicLlmProvider.generate's @Retry was never
+             actually retrying anything despite being correctly annotated and configured - this platform
+             never had a test that verified real multi-attempt retry behavior through the real
+             Spring-proxied bean until then. Added here as a minimal, backward-compatible, additive fix
+             (enables already-documented, already-intended behavior; changes nothing else) - see
+             PAYMENTX_PHASE_3_6_RAG_SERVICE.md for the full finding. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
+        <!-- The official Anthropic Java SDK - the configured LLM provider for this phase (see
+             PAYMENTX_PHASE_3_3_LLM_SERVICE.md §6 for why a named provider was chosen and why the
+             official SDK, not a hand-rolled RestTemplate call, is used specifically here). Entirely
+             isolated inside provider/anthropic/ - no class outside that package imports com.anthropic.*. -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>2.34.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Already an established test dependency in this platform (notification-service,
+             api-gateway) - reused here, not newly introduced, to test AnthropicLlmProvider at
+             the real wire level (timeouts, 429/500/401 responses, malformed JSON) by pointing the
+             Anthropic SDK client's baseUrl at a local WireMockServer instead of hitting the real API. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.13.2</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paymentx</groupId>
+        <artifactId>paymentx-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>paymentx-embedding-service</artifactId>
+    <packaging>jar</packaging>
+
+    <name>PaymentX Embedding Service</name>
+    <description>
+        AI Platform - Phase 3.4. Converts text into numerical vector
+        embeddings via a configured embedding provider, behind a
+        provider abstraction (EmbeddingService -> EmbeddingProvider ->
+        ProviderAdapter). Deliberately stateless - no database, no
+        vector storage, no similarity search. Does NOT implement a
+        Vector Database, RAG, MCP, or Agents - see
+        PAYMENTX_PHASE_3_4_EMBEDDING_SERVICE.md.
+    </description>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>com.paymentx</groupId>
+            <artifactId>paymentx-common-library</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+
+        <!-- REQUIRED for @CircuitBreaker/@Retry/@RateLimiter to actually intercept a method call at
+             runtime - resilience4j-spring-boot3 registers its interceptors as real @Aspect classes;
+             Spring's AOP proxy weaving for them only activates when aspectjweaver's pointcut-expression
+             parser is on the classpath. Its absence is silent - no startup error, no missing-bean
+             failure, the annotations simply become no-ops. Found live during Phase 3.6
+             (paymentx-rag-service) via a real end-to-end retry test that proved another service's
+             identically-shaped @Retry was never actually retrying anything despite being correctly
+             annotated and configured. Added here as a minimal, backward-compatible, additive fix
+             (enables already-documented, already-intended behavior; changes nothing else) - see
+             PAYMENTX_PHASE_3_6_RAG_SERVICE.md for the full finding. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Phase 3.4 local-embedding migration: Deep Java Library (Apache-2.0, AWS) is the real local
+             inference runtime LocalEmbeddingProvider uses to run a real ONNX sentence-transformer model
+             in-process, on CPU, with no external API call. `api` is DJL's core (model loading, NDArray,
+             Criteria/Predictor); `onnxruntime-engine` is the actual inference engine (pulls in Microsoft's
+             real onnxruntime native binary for this platform as its own transitive dependency - not
+             committed to this repo); `tokenizers` provides the real Hugging Face WordPiece tokenizer plus
+             TextEmbeddingTranslatorFactory (tokenize + mean-pool + normalize, the real preprocessing a
+             sentence-transformer model requires, matching how the model was actually trained - not
+             hand-rolled here). See PAYMENTX_PHASE_3_4_LOCAL_EMBEDDING.md for the model selection
+             rationale and license. -->
+        <dependency>
+            <groupId>ai.djl</groupId>
+            <artifactId>api</artifactId>
+            <version>0.36.0</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.onnxruntime</groupId>
+            <artifactId>onnxruntime-engine</artifactId>
+            <version>0.36.0</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.huggingface</groupId>
+            <artifactId>tokenizers</artifactId>
+            <version>0.36.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Already an established test dependency in this platform (notification-service,
+             api-gateway, paymentx-llm-service) - reused here to test OpenAiEmbeddingProvider at the
+             real wire level (timeouts, 429/401/500 responses, malformed JSON) without a real,
+             billed OpenAI call. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.13.2</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

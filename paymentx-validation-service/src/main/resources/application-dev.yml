@@ -1,0 +1,62 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Validation Service (local development profile - Postgres/Redis/Kafka on localhost). It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Validation Service (local development profile - Postgres/Redis/Kafka on localhost) ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/paymentx_validation
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+    consumer:
+      group-id: validation-service
+      auto-offset-reset: earliest
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    org.springframework: INFO

@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_4-create-report-execution-table
+      author: reporting-service
+      comment: One actual run of generating a report.
+      changes:
+        - createTable:
+            tableName: report_execution
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: report_request_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: status, type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: started_at, type: TIMESTAMP WITH TIME ZONE }
+              - column: { name: completed_at, type: TIMESTAMP WITH TIME ZONE }
+              - column: { name: row_count, type: INT }
+              - column: { name: generation_time_millis, type: BIGINT }
+              - column: { name: retry_count, type: INT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: failure_reason, type: VARCHAR(1024) }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: created_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: updated_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - addForeignKeyConstraint: { baseTableName: report_execution, baseColumnNames: report_request_id, referencedTableName: report_request, referencedColumnNames: id, constraintName: fk_report_execution_request, onDelete: CASCADE }
+        - createIndex: { indexName: idx_report_execution_status, tableName: report_execution, columns: [ { column: { name: status } } ] }
+        - createIndex: { indexName: idx_report_execution_request_id, tableName: report_execution, columns: [ { column: { name: report_request_id } } ] }
+        - sql:
+            sql: >
+              ALTER TABLE report_execution ADD CONSTRAINT chk_report_execution_status
+              CHECK (status IN ('PENDING','RUNNING','COMPLETED','FAILED','CANCELLED'));

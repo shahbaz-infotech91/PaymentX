@@ -1,0 +1,47 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_8-improve-payment-retry-table
+      author: shahbaz
+      comment: >
+        retry_attempt -> current_retry and next_retry_at -> next_retry_time
+        (naming alignment, same semantics). max_retry is genuinely new -
+        see PaymentRetry.java's javadoc for why. The existing composite
+        index idx_payment_retry_status_next_retry references the OLD
+        column name and must be dropped and recreated against the new
+        name, or it silently stops being used by the query planner
+        (Postgres does not auto-update an index definition when a
+        referenced column is renamed via ALTER TABLE ... RENAME COLUMN -
+        it DOES follow the rename automatically in Postgres actually, but
+        we recreate explicitly here for clarity and portability to other
+        databases where that is not guaranteed).
+      changes:
+        - renameColumn:
+            tableName: payment_retry
+            oldColumnName: retry_attempt
+            newColumnName: current_retry
+            columnDataType: INT
+        - renameColumn:
+            tableName: payment_retry
+            oldColumnName: next_retry_at
+            newColumnName: next_retry_time
+            columnDataType: TIMESTAMP WITH TIME ZONE
+        - addColumn:
+            tableName: payment_retry
+            columns:
+              - column:
+                  name: max_retry
+                  type: INT
+                  defaultValueNumeric: 3
+                  constraints:
+                    nullable: false
+        - dropIndex:
+            indexName: idx_payment_retry_status_next_retry
+            tableName: payment_retry
+        - createIndex:
+            indexName: idx_payment_retry_status_next_retry_time
+            tableName: payment_retry
+            columns:
+              - column:
+                  name: status
+              - column:
+                  name: next_retry_time

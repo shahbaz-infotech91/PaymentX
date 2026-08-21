@@ -1,0 +1,120 @@
+global:
+  scrape_interval: 15s
+
+# WHY host.docker.internal, not the service-name addresses this file
+# previously used (api-gateway:8080 etc.): those names only resolve via
+# Docker's embedded DNS between CONTAINERS on the same compose network.
+# Every PaymentX application service actually runs as a host-level Java
+# process (java -jar / mvn spring-boot:run, per the README's documented
+# workflow) - Prometheus itself runs inside a container, so it can only
+# reach the host machine (where the real services are listening) via the
+# special host.docker.internal DNS name Docker Desktop provides. Found and
+# fixed during Phase 1 validation: the previous config produced "dial tcp:
+# lookup api-gateway: no such host" for all 3 configured targets, 100%
+# scrape failure, invisible unless someone actually checked
+# /api/v1/targets (which this validation suite now does). Also extended
+# from 3 to all 9 application services - the previous config only covered
+# api-gateway/validation-service/payment-service.
+scrape_configs:
+  - job_name: 'paymentx-api-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+
+  # auth-service needed a pom.xml dependency added (micrometer-registry-
+  # prometheus) before this target could ever succeed - see that pom's
+  # comment.
+  - job_name: 'paymentx-auth-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+
+  - job_name: 'paymentx-validation-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8082']
+
+  - job_name: 'paymentx-payment-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8083']
+
+  - job_name: 'paymentx-routing-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8084']
+
+  - job_name: 'paymentx-audit-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8085']
+
+  - job_name: 'paymentx-notification-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8086']
+
+  - job_name: 'paymentx-reconciliation-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8087']
+
+  - job_name: 'paymentx-reporting-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8088']
+
+  # Phase 3.2 - first real AI Platform backend service, same host-process +
+  # host.docker.internal scrape pattern as every service above.
+  - job_name: 'paymentx-prompt-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8092']
+
+  # Phase 3.3 - second real AI Platform backend service (stateless -
+  # no database, unlike prompt-service above), same host-process +
+  # host.docker.internal scrape pattern as every service above.
+  - job_name: 'paymentx-llm-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8093']
+
+  # Phase 3.4 - third real AI Platform backend service (stateless -
+  # generates embeddings only, no database), same host-process +
+  # host.docker.internal scrape pattern as every service above.
+  - job_name: 'paymentx-embedding-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8094']
+
+  # Phase 3.5 - fourth real AI Platform backend service (owns real tables in the
+  # shared paymentx_ai database via pgvector, unlike embedding-service above), same
+  # host-process + host.docker.internal scrape pattern as every service above.
+  - job_name: 'paymentx-vector-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8095']
+
+  # Phase 3.6 - fifth real AI Platform backend service (pure orchestration over the
+  # four services above, owns no database), same host-process +
+  # host.docker.internal scrape pattern as every service above.
+  - job_name: 'paymentx-rag-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8096']
+
+  # Phase 3.7 - sixth real AI Platform backend service (the MCP security boundary in
+  # front of payment/routing/audit/reconciliation-service, owns no database), same
+  # host-process + host.docker.internal scrape pattern as every service above.
+  - job_name: 'paymentx-mcp-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8097']
+
+  # Phase 3.8 - seventh real AI Platform backend service (the bounded agent loop tying RAG
+  # Service/MCP Gateway/LLM Service together, owns no database), same host-process +
+  # host.docker.internal scrape pattern as every service above.
+  - job_name: 'paymentx-agent-orchestrator'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8098']

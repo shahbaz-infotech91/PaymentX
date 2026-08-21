@@ -1,0 +1,21 @@
+# ENGLISH: Build-context excludes for the frontend's own Dockerfile
+# (context = this directory, so the repo-root .dockerignore doesn't
+# apply here - Docker only honors one .dockerignore, at the build
+# context root). node_modules/ is the big one: stage 1 runs its own
+# real `npm ci` inside the image, so a host-machine node_modules/
+# (different OS/arch binaries in some native-dependency cases) must
+# never be copied in.
+#
+# HINGLISH: Frontend ke apne Dockerfile ke liye build-context excludes
+# (context = ye directory, isliye repo-root ka .dockerignore yahan
+# apply nahi hota - Docker sirf ek .dockerignore honor karta hai, build
+# context ke root par). node_modules/ sabse bada hai: stage 1 image ke
+# andar apna real `npm ci` chalata hai, isliye ek host-machine
+# node_modules/ (kuch native-dependency cases me alag OS/arch
+# binaries) kabhi copy nahi hona chahiye.
+
+node_modules/
+dist/
+.env
+.env.local
+*.log

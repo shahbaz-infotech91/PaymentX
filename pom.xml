@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.paymentx</groupId>
+    <artifactId>paymentx-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>PaymentX Parent</name>
+    <description>Real-time payment orchestration platform - parent aggregator POM</description>
+
+    <!--
+        WHY packaging=pom:
+        This POM never produces a JAR itself. It exists purely to:
+          1. Declare which modules build as part of `mvn install` at the root
+          2. Centralize dependency VERSIONS (via dependencyManagement) so every
+             service uses the same Spring Boot / Kafka / Postgres driver version.
+        This is the single most common source of "works in service A, breaks in
+        service B" bugs in real microservice orgs - version drift. We kill that
+        class of bug here, structurally, not by convention/discipline.
+    -->
+
+    <modules>
+        <module>paymentx-common</module> <!-- DEPRECATED - see docs/adr/0003-paymentx-common-deprecated.md.
+             Kept building during the migration window so nothing breaks
+             mid-transition. Slated for physical removal once every
+             service has moved to paymentx-common-library and this module
+             has zero remaining <dependency> references. -->
+        <module>paymentx-common-library</module>
+        <module>paymentx-api-gateway</module>
+        <module>paymentx-auth-service</module>
+        <module>paymentx-validation-service</module>
+        <module>paymentx-payment-service</module>
+        <module>paymentx-routing-service</module>
+        <module>paymentx-audit-service</module>
+        <module>paymentx-notification-service</module>
+        <module>paymentx-reconciliation-service</module>
+        <module>paymentx-reporting-service</module>
+
+        <!-- AI Platform - Phase 3.2. See PAYMENTX_PHASE_3_ARCHITECTURE.md §16/§17:
+             flat module placement (matching every business service above), depends
+             on paymentx-common-library, owns tables in the new shared paymentx_ai
+             database rather than a per-service database (a deliberate, documented
+             deviation from the one-DB-per-service convention - see that doc §6). -->
+        <module>paymentx-prompt-service</module>
+
+        <!-- AI Platform - Phase 3.3. See PAYMENTX_PHASE_3_ARCHITECTURE.md §8: LlmService ->
+             LlmProvider abstraction -> ProviderAdapter, application layer never touches a
+             provider-specific type. Deliberately stateless (Step 24 of the Phase 3.3 brief) -
+             no database, no Liquibase, unlike Prompt Service. -->
+        <module>paymentx-llm-service</module>
+
+        <!-- AI Platform - Phase 3.4. Same EmbeddingService -> EmbeddingProvider -> ProviderAdapter
+             layering as LlmService (Phase 3.3). Converts text to vectors ONLY - no vector database,
+             no similarity search, no RAG (Phase 3.5+). Deliberately stateless - no database, no
+             Liquibase, same as LlmService. -->
+        <module>paymentx-embedding-service</module>
+
+        <!-- AI Platform - Phase 3.5. See PAYMENTX_PHASE_3_ARCHITECTURE.md §7/§8: PostgreSQL + pgvector
+             inside the existing shared `paymentx_ai` database (same database Prompt Service already
+             uses) - NOT a new database, NOT a dedicated vector-DB product. Unlike LlmService/
+             EmbeddingService, this module DOES own a database/Liquibase changelog (ai_document/
+             ai_document_chunk/ai_document_embedding) - it is the storage layer, not a stateless
+             provider-calling service. Stores and searches vectors ONLY - no RAG orchestration, no
+             document ingestion pipeline (PDF/DOCX parsing), no MCP, no Agents (Phase 3.6+). -->
+        <module>paymentx-vector-service</module>
+
+        <!-- AI Platform - Phase 3.6. Pure orchestration layer: Embedding Service -> Vector Service ->
+             Prompt Service -> LLM Service. Owns zero database, zero provider-specific logic, zero
+             vector-search implementation - calls the four already-built AI Platform services over REST
+             only (same JsonNode-parsing, no-compile-dependency client pattern Control Center's
+             AiPlatformClient already established), the same way it forbids duplicating any of their
+             internals. No document ingestion, no MCP, no Agents (Phase 3.7+). -->
+        <module>paymentx-rag-service</module>
+
+        <!-- AI Platform - Phase 3.7. The security boundary between an AI/LLM and real PaymentX business
+             APIs - the real Model Context Protocol (io.modelcontextprotocol.sdk, Streamable HTTP
+             transport), a fixed read-only tool catalog (payment.lookup, payment.status, routing.lookup,
+             reconciliation.status, audit.search) backed by real existing business-service REST APIs only,
+             authorization/input-validation/rate-limiting/timeout/audit on every tool call. Owns zero
+             database. Never gives the AI direct Postgres/Redis/Kafka/RabbitMQ/filesystem/shell access, no
+             generic database/HTTP-proxy tool, no write tools enabled. No Agent Orchestrator, no
+             Multi-Agent, no autonomous tool planning (Phase 3.8+). -->
+        <module>paymentx-mcp-gateway</module>
+
+        <!-- AI Platform - Phase 3.8. The single agent loop tying RAG Service, MCP Gateway, and LLM
+             Service together behind a bounded, auditable state machine - classify/plan (LLM structured
+             JSON decision) -> retrieve (RAG Service) and/or call a tool (real MCP client against MCP
+             Gateway) -> evaluate -> generate a final, source-cited, evidence-backed answer. Owns zero
+             database (bounded per-request execution state only). Read-only tools only - a hardcoded,
+             code-enforced AgentToolPolicy allow-list denies every write-shaped tool regardless of what the
+             LLM requests. No Multi-Agent, no long-term memory, no autonomous financial actions, no
+             human-approval workflow (Phase 3.9+). -->
+        <module>paymentx-agent-orchestrator</module>
+
+        <!-- Control Center backend - Phase 1: independent dashboard skeleton
+             (health/CORS/exception-handling only, no Kafka/Redis/Postgres/
+             Prometheus integration yet, zero compile dependency on any
+             business service module). See paymentx-control-center/README.md. -->
+        <module>paymentx-control-center/backend</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <!-- spring-boot-starter-parent sets this by default; this repo
+             uses its own parent aggregator POM instead, so it must be set
+             explicitly here - without it, javac drops parameter names and
+             every @PathVariable/@RequestParam without an explicit name
+             fails at request time with "Ensure the compiler uses the
+             '-parameters' flag". -->
+        <maven.compiler.parameters>true</maven.compiler.parameters>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Centralized version properties - bump ONCE here, every module inherits it.
+             Spring Boot 3.5.x <-> Spring Cloud 2025.0.x (Northfields) is a
+             verified-compatible pairing - see the migration plan discussion
+             for the source. Re-verify the exact latest 3.5.x/2025.0.x patch
+             versions at execution time before a real build; ecosystem
+             patches ship frequently and a newer compatible patch may exist
+             by the time this is actually run. -->
+        <spring-boot.version>3.5.9</spring-boot.version>
+        <spring-cloud.version>2025.0.1</spring-cloud.version>
+        <postgresql.version>42.7.4</postgresql.version>
+        <!-- Phase 3.5 (paymentx-vector-service) only. NOT covered by spring-boot-dependencies -
+             hibernate-vector is a separate artifact from hibernate-core (see its own pom's javadoc
+             for why) and MUST stay pinned to the exact hibernate-core version spring-boot-dependencies
+             3.5.9 resolves (verified live: 6.6.39.Final) - a mismatched hibernate-vector version can
+             silently fail to register its PGVectorTypeContributor. Re-verify this still matches
+             hibernate-core's resolved version (`mvn dependency:tree | grep hibernate-core`) before
+             bumping spring-boot.version above. -->
+        <hibernate-vector.version>6.6.39.Final</hibernate-vector.version>
+        <lombok.version>1.18.34</lombok.version>
+        <mapstruct.version>1.6.2</mapstruct.version>
+        <testcontainers.version>1.20.2</testcontainers.version>
+        <springdoc.version>2.6.0</springdoc.version>
+        <micrometer-tracing.version>1.3.4</micrometer-tracing.version>
+    </properties>
+
+    <!--
+        dependencyManagement != dependencies.
+        This block does NOT pull anything into every module's classpath.
+        It only says: "IF a child module declares this dependency, use THIS version."
+        Child modules still explicitly declare what they need in their own <dependencies>.
+        This is intentional - a Notification Service should not have Postgres on its
+        classpath just because Payment Service needs it.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- DEPRECATED - see docs/adr/0003-paymentx-common-deprecated.md.
+                 Do not add new dependents. -->
+            <dependency>
+                <groupId>com.paymentx</groupId>
+                <artifactId>paymentx-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- The shared library going forward - see docs/adr/0004-paymentx-common-library.md -->
+            <dependency>
+                <groupId>com.paymentx</groupId>
+                <artifactId>paymentx-common-library</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- NOT covered by spring-boot-dependencies BOM - must be
+                 managed explicitly or every consuming module would need
+                 its own <version> tag, reintroducing the version-drift
+                 problem this whole dependencyManagement block exists to prevent. -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct-processor</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!--
+                    WHY an explicit <executions> block is required here (and
+                    would NOT be if this project inherited from
+                    spring-boot-starter-parent directly): this repo only
+                    imports spring-boot-dependencies as a dependencyManagement
+                    BOM (see comment above), not the actual starter-parent -
+                    so none of spring-boot-starter-parent's own
+                    pluginManagement bindings (including this repackage
+                    execution) come along for free. Without this, every
+                    service module's `mvn package`/`install` produces the
+                    PLAIN jar only (no Main-Class manifest entry, a few tens
+                    of KB instead of the fat executable jar), which fails at
+                    runtime with "no main manifest attribute" the moment
+                    anything tries `java -jar target/x.jar` - `mvn
+                    spring-boot:run` masked this because it runs from
+                    compiled classes directly and never needed the jar to be
+                    executable. Real bug found and fixed during Phase 1
+                    validation (previously undetected because no prior
+                    validation pass actually launched the built jars).
+                -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                    <executions>
+                        <execution>
+                            <id>repackage</id>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

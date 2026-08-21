@@ -1,0 +1,57 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-participant-table
+      author: shahbaz
+      comment: >
+        A "participant" is any bank or financial institution that can send/
+        receive payments through PaymentX (e.g. the banks in the "Banks
+        (InstantPayment/CARD_PAYMENT)" and "Banks (REAL_TIME_PAYMENT)" boxes on the architecture diagram).
+        We validate that both the debtor bank AND creditor bank are known,
+        active participants BEFORE checking amount limits or blacklists -
+        there is no point running expensive rule checks for a bank we don't
+        even have a relationship with.
+      changes:
+        - createTable:
+            tableName: participant
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: bank_id
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: legal_name
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  defaultValue: ACTIVE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: onboarded_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_participant_bank_id
+            tableName: participant
+            columns:
+              - column:
+                  name: bank_id

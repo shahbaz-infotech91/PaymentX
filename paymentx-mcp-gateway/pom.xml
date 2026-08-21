@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paymentx</groupId>
+        <artifactId>paymentx-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>paymentx-mcp-gateway</artifactId>
+    <packaging>jar</packaging>
+
+    <name>PaymentX MCP Gateway</name>
+    <description>
+        AI Platform - Phase 3.7. The one, single, enforced security
+        boundary between an AI/LLM and real PaymentX business APIs -
+        implements the real Model Context Protocol (MCP,
+        io.modelcontextprotocol.sdk, Streamable HTTP transport) so an AI
+        can discover and call a fixed, explicit, read-only tool catalog
+        (payment.lookup, payment.status, routing.lookup,
+        reconciliation.status, audit.search) that is authorized, input-
+        validated, rate-limited, timeout-bounded, and audited on every
+        single call. Never gives the AI direct access to Postgres,
+        Redis, Kafka, RabbitMQ, the filesystem, a shell, or any generic
+        database/infrastructure tool - every capability is an explicit
+        business-level tool backed by a real, already-existing PaymentX
+        REST API, never a fabricated one. No write tools are enabled in
+        this phase. Does NOT implement Agent Orchestrator, Multi-Agent,
+        autonomous tool planning, or autonomous payment actions - see
+        PAYMENTX_PHASE_3_7_MCP_GATEWAY.md.
+    </description>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>com.paymentx</groupId>
+            <artifactId>paymentx-common-library</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+
+        <!-- REQUIRED for @CircuitBreaker/@Retry to actually intercept a method call at runtime - a real,
+             previously-undocumented gap found and fixed in LLM/Embedding/RAG Service during Phase 3.6 (see
+             PAYMENTX_PHASE_3_6_RAG_SERVICE.md's Known Limitations / Retry sections for the full story).
+             Added here proactively from day one so this module never carries the same silent gap. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- The official Anthropic/MCP-steering-group Java SDK (Model Context Protocol) - real
+             Streamable HTTP server transport (io.modelcontextprotocol.server.transport.
+             HttpServletStreamableServerTransportProvider is a plain jakarta.servlet.http.HttpServlet,
+             registered directly into this service's own embedded Tomcat via ServletRegistrationBean - no
+             Spring AI, no WebFlux, matching this platform's established "raw official SDK, no heavy
+             framework wrapper" convention already set by paymentx-llm-service's direct
+             com.anthropic:anthropic-java use and paymentx-embedding-service's direct OpenAI REST use).
+             Version 0.18.3 verified live via `mvn dependency:get` + `javap` against the real jar - not
+             guessed (see PAYMENTX_PHASE_3_7_MCP_GATEWAY.md's Protocol/Transport section). This single
+             artifact transitively brings mcp-core (protocol implementation) and mcp-json-jackson2
+             (Jackson-backed JSON binding). -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp</artifactId>
+            <version>0.18.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Already an established test dependency in this platform (notification-service, api-gateway,
+             paymentx-llm-service, paymentx-embedding-service, paymentx-rag-service) - reused here to test
+             each downstream client (PaymentServiceClient/RoutingServiceClient/ReconciliationServiceClient/
+             AuditServiceClient) at the real wire level against local stand-ins for the real business
+             services this gateway calls. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.13.2</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

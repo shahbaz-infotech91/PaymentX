@@ -1,0 +1,24 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_6-create-report-schedule-table
+      author: reporting-service
+      comment: Recurring report configuration.
+      changes:
+        - createTable:
+            tableName: report_schedule
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: report_type, type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: report_format, type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: frequency, type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: cron_expression, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: active, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: last_run_at, type: TIMESTAMP WITH TIME ZONE }
+              - column: { name: next_run_at, type: TIMESTAMP WITH TIME ZONE }
+              - column: { name: created_by_user, type: VARCHAR(64) }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: created_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: updated_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - createIndex: { indexName: idx_report_schedule_active, tableName: report_schedule, columns: [ { column: { name: active } } ] }

@@ -1,0 +1,22 @@
+{
+  // ENGLISH: Root TypeScript project reference file. What it does:
+  // points to the two real tsconfigs (app code, Vite node config) so
+  // `tsc -b` (used by `npm run build`) type-checks both in one pass.
+  // Why it exists: standard Vite React+TS template split, kept exactly
+  // as Vite scaffolds it so tooling (editors, `tsc -b`) behaves
+  // predictably. How it will communicate with the backend: N/A - this
+  // is a build-time-only config file.
+  // HINGLISH: Root TypeScript project reference file. Ye kya karti hai:
+  // do real tsconfigs (app code, Vite node config) ko point karti hai
+  // taaki `tsc -b` (jo `npm run build` use karta hai) dono ko ek hi
+  // pass me type-check kare. Ye dashboard me kyu hai: standard Vite
+  // React+TS template split hai, exactly waise rakha gaya hai jaise
+  // Vite scaffold karta hai, taaki tooling (editors, `tsc -b`)
+  // predictably behave kare. Backend se kaise connect hogi: N/A - ye
+  // sirf ek build-time config file hai.
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

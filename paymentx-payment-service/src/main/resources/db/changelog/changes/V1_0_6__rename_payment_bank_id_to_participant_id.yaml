@@ -1,0 +1,23 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_6-rename-payment-bank-id-to-participant-id
+      author: shahbaz
+      comment: >
+        Renaming debtor_bank_id/creditor_bank_id to
+        debtor_participant_id/creditor_participant_id. Using renameColumn,
+        NOT dropColumn+addColumn - renameColumn preserves existing data;
+        drop+add would silently lose every debtor/creditor value already
+        written by anyone who ran V1_0_0 before this changeset existed.
+        This is exactly why we add a NEW changeset for a rename rather
+        than editing V1_0_0__create_payment_table.yaml directly.
+      changes:
+        - renameColumn:
+            tableName: payment
+            oldColumnName: debtor_bank_id
+            newColumnName: debtor_participant_id
+            columnDataType: VARCHAR(32)
+        - renameColumn:
+            tableName: payment
+            oldColumnName: creditor_bank_id
+            newColumnName: creditor_participant_id
+            columnDataType: VARCHAR(32)

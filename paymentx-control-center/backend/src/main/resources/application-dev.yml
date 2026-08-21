@@ -1,0 +1,33 @@
+# ENGLISH: Local-development profile overrides. What it does: still
+# empty of overrides beyond what application.yml already sets for
+# local use (every real connection target there already points at
+# localhost, matching this machine's real infra/docker-compose.yml
+# port mappings) - kept as its own file purely to match the dev/prod
+# profile-split convention every other PaymentX service follows (see
+# e.g. paymentx-validation-service's application-dev.yml/
+# application-prod.yml pair). Updated (Phase 6): the prod profile this
+# comment used to describe as "future" now exists for real - see
+# application-prod.yml, which every CONTROL_CENTER_* environment
+# variable and control-center.security.enabled=true actually live in.
+# How it will communicate with the backend: this IS backend
+# configuration, activated via spring.profiles.active: dev
+# (application.yml's default).
+#
+# HINGLISH: Local-development profile overrides. Ye kya karti hai: ab
+# bhi application.yml jo already local use ke liye set karta hai uske
+# alawa koi override nahi hai (wahan ka har real connection target
+# pehle se localhost point karta hai, is machine ke real
+# infra/docker-compose.yml port mappings se match karte hue) - apni
+# alag file ke roop me sirf isliye rakha gaya hai taaki dev/prod
+# profile-split convention match ho jo har dusri PaymentX service
+# follow karti hai (jaise paymentx-validation-service ka
+# application-dev.yml/application-prod.yml pair dekho). Updated (Phase
+# 6): jis prod profile ko ye comment pehle "future" kehta tha wo ab
+# real me exist karta hai - application-prod.yml dekho, jahan har
+# CONTROL_CENTER_* environment variable aur
+# control-center.security.enabled=true actually rehte hain. Backend se
+# kaise connect hogi: yehi backend configuration hai,
+# spring.profiles.active: dev (application.yml ka default) ke through
+# activate hoti hai.
+
+# Intentionally empty - see comment above.

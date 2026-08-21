@@ -1,0 +1,115 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_1-create-reconciliation-batch-table
+      author: reconciliation-service
+      comment: One run of the reconciliation engine.
+      changes:
+        - createTable:
+            tableName: reconciliation_batch
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: batch_type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(24)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: settlement_file_id
+                  type: UUID
+              - column:
+                  name: window_from
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: window_to
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: started_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: completed_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: total_records
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: matched_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mismatch_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: triggered_by
+                  type: VARCHAR(64)
+              - column:
+                  name: failure_reason
+                  type: VARCHAR(1024)
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            indexName: idx_reconciliation_batch_status
+            tableName: reconciliation_batch
+            columns:
+              - column:
+                  name: status
+        - createIndex:
+            indexName: idx_reconciliation_batch_settlement_file_id
+            tableName: reconciliation_batch
+            columns:
+              - column:
+                  name: settlement_file_id
+
+        - sql:
+            sql: >
+              ALTER TABLE reconciliation_batch ADD CONSTRAINT chk_reconciliation_batch_type
+              CHECK (batch_type IN ('SCHEDULED','MANUAL','INCREMENTAL','FULL'));
+        - sql:
+            sql: >
+              ALTER TABLE reconciliation_batch ADD CONSTRAINT chk_reconciliation_batch_status
+              CHECK (status IN ('PENDING','RUNNING','COMPLETED','FAILED','PARTIALLY_COMPLETED'));

@@ -1,0 +1,65 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Auth Service local development profile - Postgres on localhost.
+# Regression-remediation fix (Defect 3): this file did not exist before -
+# Auth Service had no dev-profile datasource at all (see application.yml's
+# new spring.profiles.active: dev comment for the full root-cause). Structure
+# mirrors every other service's application-dev.yml (see e.g.
+# paymentx-audit-service/src/main/resources/application-dev.yml) so this
+# looks and behaves like the rest of the platform, not a special case.
+#
+# Credentials are env-var-driven with a local-only default rather than the
+# bare hardcoded literal every other service's dev.yml uses, because this
+# task's explicit instruction for this specific defect was "Do NOT hardcode
+# credentials" - and Auth Service, being the identity/credentials service
+# itself, is the one place on this platform where that distinction is worth
+# keeping even in a local-dev file. The default (postgres/postgres) still
+# matches the real local Postgres instance every other service already
+# connects to, so local startup remains zero-friction with no env vars set.
+#
+# UPDATED (Auth implementation): this service now has a real schema
+# (auth_user, auth_user_role) - ddl-auto changed from "none" to "validate"
+# and Liquibase enabled, matching every other PaymentX service's exact
+# convention (Hibernate validates the schema Liquibase already owns and
+# applied; it never generates DDL itself).
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Auth Service local development profile - Postgres localhost par.
+# Regression-remediation fix (Defect 3): ye file pehle exist nahi karti thi -
+# Auth Service ka koi dev-profile datasource hi nahi tha. Structure har dusri
+# service ke application-dev.yml jaisa hai, taaki ye platform ka hissa lage,
+# koi special case na ho. Credentials env-var-driven hain (bare hardcoded
+# literal nahi) kyunki ye task ka explicit instruction tha is defect ke liye
+# specifically, aur Auth Service khud identity/credentials service hai.
+# Schema/entities jaan-boojh kar nahi banaye - abhi koi @Entity nahi hai aur
+# paymentx_auth database me koi table nahi hai, wo naya scope hoga.
+# ====================================================================
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/paymentx_auth
+    username: ${AUTH_DB_USERNAME:postgres}
+    password: ${AUTH_DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    org.springframework: INFO

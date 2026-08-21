@@ -1,0 +1,78 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_3-create-payment-settlement-table
+      author: shahbaz
+      comment: >
+        One settlement record per payment (1:1) - separated from the core
+        payment table because settlement is a DISTINCT lifecycle stage
+        with its own external reference number (from the scheme rail) and
+        its own timestamp, owned conceptually by a future Settlement Flow
+        (Part 4) rather than mixed into the payment row itself.
+      changes:
+        - createTable:
+            tableName: payment_settlement
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: payment_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    unique: true
+                    foreignKeyName: fk_settlement_payment
+                    references: payment(id)
+              - column:
+                  name: settlement_status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: settlement_amount
+                  type: DECIMAL(18,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: settlement_currency
+                  type: VARCHAR(3)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: external_settlement_ref
+                  type: VARCHAR(128)
+              - column:
+                  name: settled_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false

@@ -1,0 +1,123 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Runtime configuration for LLM Service. Configures the web server,
+# observability, and the llm.* provider settings this service reads on
+# startup - other services never read this file directly, each service
+# owns and loads only its own configuration. LLM_API_KEY has NO default
+# anywhere in this file (see the ${LLM_API_KEY:} empty-placeholder
+# default below) - see LlmProperties' javadoc for why an empty default,
+# not a missing one, is the deliberate choice here.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# LLM Service ki runtime configuration. Web server, observability, aur
+# is service ke llm.* provider settings configure karta hai jo startup
+# pe padhe jaate hain - dusri services ye file kabhi seedhe nahi
+# padhti, har service sirf apni configuration khud load karti hai.
+# LLM_API_KEY ka is file me kahin bhi koi default NAHI hai (neeche
+# ${LLM_API_KEY:} empty-placeholder default dekho) - LlmProperties ka
+# javadoc dekho ki ek empty default, ek missing default nahi, yahan
+# jaan-boojh kar kyun choose kiya gaya.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-llm-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8093
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.llm: DEBUG
+
+paymentx:
+  service-name: LLM Service
+
+# The one real, configured LLM provider for Phase 3.3 - see
+# PAYMENTX_PHASE_3_3_LLM_SERVICE.md §6 for why Anthropic was chosen.
+# apiKey deliberately has an EMPTY placeholder default (":" with
+# nothing after it), never a real- or fake-looking value - if
+# LLM_API_KEY is unset, this service still starts and honestly reports
+# NOT_CONFIGURED via GET /api/v1/llm/health instead of crashing at boot
+# or fabricating a response.
+llm:
+  provider: anthropic
+  anthropic:
+    api-key: ${LLM_API_KEY:}
+    model: ${LLM_MODEL:claude-opus-5}
+    base-url: ${LLM_BASE_URL:}
+    default-max-tokens: ${LLM_MAX_TOKENS:4096}
+    timeout-seconds: ${LLM_TIMEOUT_SECONDS:60}
+
+# Reuses the exact instance-naming/tuning pattern
+# PAYMENTX_PHASE_3_ARCHITECTURE.md §8 recommends: the same shape as
+# payment-service's already-configured but previously-unwired
+# `routingService` instance, applied here and actually wired to
+# AnthropicLlmProvider.generate via @CircuitBreaker/@Retry(name =
+# "llmProvider"). WHY there is no retry-exceptions/ignore-exceptions
+# list here: those are purely class-based, but every failure this
+# service throws is the SAME class (LlmException) with a `retryable`
+# boolean that differs per instance (see its javadoc) - a class list
+# cannot express "retry this exception sometimes, not others" for a
+# single type. See config/ResilienceConfig.java's RetryConfigCustomizer
+# bean, which supplies the actual `ex instanceof LlmException le &&
+# le.isRetryable()` predicate this YAML block alone cannot express.
+resilience4j:
+  circuitbreaker:
+    instances:
+      llmProvider:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      llmProvider:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true

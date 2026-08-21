@@ -1,0 +1,37 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# RAG Service local development profile. Like LLM/Embedding Service,
+# this service has no Postgres/Liquibase section - it is pure
+# orchestration, deliberately stateless. Assumes the four downstream
+# services (Embedding/Vector/Prompt/LLM Service) are already running
+# locally on their documented ports, and that Vector Service's
+# `paymentx_ai` database already contains real test knowledge (Step
+# 33/36 - this phase does not ingest documents; see
+# V1_0_2__seed_payment_knowledge_assistant_prompt.yaml in
+# paymentx-prompt-service and RagServiceImplTest's own deterministic
+# test fixtures for how knowledge gets into the loop without a real
+# ingestion pipeline).
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# RAG Service local development profile. LLM/Embedding Service ki
+# tarah, is service me koi Postgres/Liquibase section nahi hai - ye pure
+# orchestration hai, jaan-boojh kar stateless. Assume karta hai ki char
+# downstream services (Embedding/Vector/Prompt/LLM Service) already
+# locally apne documented ports par chal rahi hain, aur Vector Service
+# ke `paymentx_ai` database me already real test knowledge hai (Step
+# 33/36 - ye phase documents ingest nahi karta; paymentx-prompt-service
+# me V1_0_2__seed_payment_knowledge_assistant_prompt.yaml aur
+# RagServiceImplTest ke apne deterministic test fixtures dekho ki bina
+# ek real ingestion pipeline ke knowledge loop me kaise aati hai).
+# ====================================================================
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    org.springframework: INFO

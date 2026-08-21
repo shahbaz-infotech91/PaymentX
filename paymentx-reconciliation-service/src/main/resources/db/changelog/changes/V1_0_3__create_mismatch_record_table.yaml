@@ -1,0 +1,119 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_3-create-mismatch-record-table
+      author: reconciliation-service
+      comment: Mutable mismatch resolution workflow.
+      changes:
+        - createTable:
+            tableName: mismatch_record
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: reconciliation_record_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: batch_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mismatch_type
+                  type: VARCHAR(24)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(1024)
+              - column:
+                  name: resolved
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resolved_by
+                  type: VARCHAR(64)
+              - column:
+                  name: resolved_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: resolution_notes
+                  type: VARCHAR(1024)
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: mismatch_record
+            baseColumnNames: reconciliation_record_id
+            referencedTableName: reconciliation_record
+            referencedColumnNames: id
+            constraintName: fk_mismatch_record_reconciliation_record
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableName: mismatch_record
+            baseColumnNames: batch_id
+            referencedTableName: reconciliation_batch
+            referencedColumnNames: id
+            constraintName: fk_mismatch_record_batch
+            onDelete: CASCADE
+
+        - createIndex:
+            indexName: idx_mismatch_record_batch_id
+            tableName: mismatch_record
+            columns:
+              - column:
+                  name: batch_id
+        - createIndex:
+            indexName: idx_mismatch_record_resolved
+            tableName: mismatch_record
+            columns:
+              - column:
+                  name: resolved
+        - createIndex:
+            indexName: idx_mismatch_record_type
+            tableName: mismatch_record
+            columns:
+              - column:
+                  name: mismatch_type
+
+        - sql:
+            sql: >
+              ALTER TABLE mismatch_record ADD CONSTRAINT chk_mismatch_record_type
+              CHECK (mismatch_type IN ('MATCHED','MISSING','DUPLICATE','AMOUNT_MISMATCH',
+              'CURRENCY_MISMATCH','STATUS_MISMATCH','SETTLEMENT_DELAY','LATE_SETTLEMENT',
+              'ORPHAN','UNEXPECTED_SETTLEMENT'));

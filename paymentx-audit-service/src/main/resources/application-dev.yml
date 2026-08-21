@@ -1,0 +1,76 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Audit Service (local development profile - Postgres/Redis/Kafka on localhost). It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Audit Service (local development profile - Postgres/Redis/Kafka on localhost) ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/paymentx_audit
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    # Regression-remediation fix: HikariCP's own default is maximum-pool-size=10 with
+    # minimum-idle defaulting to EQUAL maximum-pool-size when unset - meaning this service
+    # held 10 permanently idle connections to the shared dev Postgres instance at all
+    # times, regardless of real load (confirmed live via this service's own real
+    # hikaricp.connections.idle actuator metric = 10, active = 0). With every AI Platform
+    # and business service doing the same, steady-state idle connections alone exceeded
+    # Postgres's real max_connections=100, causing a genuine, reproducible connection
+    # refusal for any new connection (including Control Center's own contextLoads test).
+    # 5/2 keeps real headroom for this service's actual light query load while cutting its
+    # permanent idle footprint by 80% - a pool-tuning fix, not a business logic change.
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+    consumer:
+      group-id: audit-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    org.springframework: INFO

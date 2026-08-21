@@ -1,0 +1,109 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Phase 6 - optional Docker Compose definition for running the Control
+# Center itself (backend + frontend) as containers. What it does:
+# builds and runs both real images (see backend/Dockerfile,
+# frontend/Dockerfile). It does NOT touch, extend, or replace
+# infra/docker-compose.yml at the repo root - that file remains the
+# one, unmodified source of truth for Postgres/Kafka/Redis/RabbitMQ/
+# Zipkin/Prometheus/MailHog/pgAdmin/Kafka UI, exactly as every prior
+# phase left it. Why host.docker.internal, not a shared Docker
+# network: every real dependency this backend talks to - the 7
+# Postgres databases (port 5433), Kafka (9092), Redis (6379), RabbitMQ
+# management (15672), Prometheus (9090), Zipkin (9411), MailHog
+# (8025), AND all 9 real PaymentX business services (8080-8088) - is
+# reached at "localhost:<port>" in this module's default
+# application.yml, because this repo's documented, real local-dev
+# workflow runs every one of those 9 business services directly via
+# `mvn spring-boot:run` on the HOST (see root README.md / start-all.ps1),
+# not as containers - joining infra's Docker network would still leave
+# the 9 business services unreachable by container DNS, since they are
+# not containerized at all in this repo's real setup. host.docker.internal
+# is Docker's own real, documented mechanism for a container to reach
+# services bound on the host's localhost, which is the actual, correct
+# fix for that real topology - not a workaround. How to run:
+# `docker compose -f paymentx-control-center/docker-compose.yml up --build`
+# from the repo root (needed so each Dockerfile's build context resolves
+# correctly - see the "context: .." lines below, mirroring the exact
+# convention infra/docker-compose.yml's own api-gateway service uses).
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Phase 6 - Control Center ko khud (backend + frontend) containers ke
+# roop me chalane ke liye optional Docker Compose definition. Ye kya
+# karti hai: dono real images build aur run karta hai (backend/
+# Dockerfile, frontend/Dockerfile dekho). Ye repo root ke
+# infra/docker-compose.yml ko touch, extend, ya replace NAHI karta -
+# wo file ek hi, unmodified source of truth bani rehti hai
+# Postgres/Kafka/Redis/RabbitMQ/Zipkin/Prometheus/MailHog/pgAdmin/Kafka
+# UI ke liye, exactly jaisa har pichle phase ne use chhoda tha. Kyun
+# host.docker.internal, ek shared Docker network nahi: har real
+# dependency jise ye backend baat karta hai - 7 Postgres databases
+# (port 5433), Kafka (9092), Redis (6379), RabbitMQ management
+# (15672), Prometheus (9090), Zipkin (9411), MailHog (8025), AUR
+# saare 9 real PaymentX business services (8080-8088) - is module ke
+# default application.yml me "localhost:<port>" par reach hoti hai,
+# kyunki is repo ka documented, real local-dev workflow un 9 business
+# services me se har ek ko HOST par directly `mvn spring-boot:run` se
+# chalata hai (root README.md / start-all.ps1 dekho), containers ke
+# roop me nahi - infra ke Docker network ko join karna bhi 9 business
+# services ko container DNS se unreachable hi rakhega, kyunki wo is
+# repo ke real setup me bilkul containerized hain hi nahi.
+# host.docker.internal Docker ka apna real, documented mechanism hai
+# ek container ke liye host ke localhost par bound services tak
+# pahunchne ka, jo us real topology ke liye actual, correct fix hai -
+# koi workaround nahi. Kaise chalayein: repo root se `docker compose -f
+# paymentx-control-center/docker-compose.yml up --build` (repo root se
+# zaroori hai taaki har Dockerfile ka build context sahi resolve ho -
+# neeche "context: .." lines dekho, exactly wahi convention jo
+# infra/docker-compose.yml ka apna api-gateway service use karta hai).
+# ====================================================================
+
+version: "3.9"
+
+services:
+  control-center-backend:
+    build:
+      context: ..
+      dockerfile: paymentx-control-center/backend/Dockerfile
+    container_name: paymentx-control-center-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      # Every control-center.* URL below is a localhost:<port> default in application.yml -
+      # rewritten here to the one, real Docker mechanism for "the host's localhost" from inside a container.
+      CONTROL_CENTER_SERVICES_API_GATEWAY_URL: http://host.docker.internal:8080
+      CONTROL_CENTER_SERVICES_AUTH_SERVICE_URL: http://host.docker.internal:8081
+      CONTROL_CENTER_SERVICES_VALIDATION_SERVICE_URL: http://host.docker.internal:8082
+      CONTROL_CENTER_SERVICES_PAYMENT_SERVICE_URL: http://host.docker.internal:8083
+      CONTROL_CENTER_SERVICES_ROUTING_SERVICE_URL: http://host.docker.internal:8084
+      CONTROL_CENTER_SERVICES_AUDIT_SERVICE_URL: http://host.docker.internal:8085
+      CONTROL_CENTER_SERVICES_NOTIFICATION_SERVICE_URL: http://host.docker.internal:8086
+      CONTROL_CENTER_SERVICES_RECONCILIATION_SERVICE_URL: http://host.docker.internal:8087
+      CONTROL_CENTER_SERVICES_REPORTING_SERVICE_URL: http://host.docker.internal:8088
+      CONTROL_CENTER_POSTGRES_HOST: host.docker.internal
+      CONTROL_CENTER_POSTGRES_PORT: "5433"
+      CONTROL_CENTER_KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9092
+      CONTROL_CENTER_REDIS_HOST: host.docker.internal
+      CONTROL_CENTER_REDIS_PORT: "6379"
+      CONTROL_CENTER_RABBITMQ_MANAGEMENT_URL: http://host.docker.internal:15672
+      CONTROL_CENTER_PROMETHEUS_BASE_URL: http://host.docker.internal:9090
+      CONTROL_CENTER_ZIPKIN_BASE_URL: http://host.docker.internal:9411
+      CONTROL_CENTER_MAILHOG_BASE_URL: http://host.docker.internal:8025
+      CONTROL_CENTER_CORS_ALLOWED_ORIGINS: http://localhost:8090
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8089:8089"
+
+  control-center-frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8089
+    container_name: paymentx-control-center-frontend
+    depends_on:
+      - control-center-backend
+    ports:
+      - "8090:80"

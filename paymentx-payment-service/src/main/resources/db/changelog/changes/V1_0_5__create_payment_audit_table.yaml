@@ -1,0 +1,66 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_5-create-payment-audit-table
+      author: shahbaz
+      comment: >
+        Broad, free-form audit trail (see the module-level comment on
+        payment_status_history for the distinction between the two).
+        Immutable/append-only like payment_status_history - no
+        updated_at/updated_by/version by design.
+      changes:
+        - createTable:
+            tableName: payment_audit
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: payment_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_audit_payment
+                    references: payment(id)
+              - column:
+                  name: action
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: details
+                  type: TEXT
+              - column:
+                  name: occurred_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            indexName: idx_payment_audit_payment_id
+            tableName: payment_audit
+            columns:
+              - column:
+                  name: payment_id
+              - column:
+                  name: occurred_at

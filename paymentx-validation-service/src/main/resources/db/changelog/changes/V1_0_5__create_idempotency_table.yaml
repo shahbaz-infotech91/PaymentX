@@ -1,0 +1,56 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_5-create-idempotency-table
+      author: shahbaz
+      comment: >
+        THE most important table in this service. payment_reference has a
+        UNIQUE constraint - this is what makes duplicate detection atomic
+        under concurrent load. Two threads racing to insert the same
+        payment_reference: the DB guarantees exactly one insert succeeds,
+        the other throws a constraint violation, which the service layer
+        catches and treats as "duplicate, not an error." A Java-side
+        "check then insert" without this constraint has a race condition
+        window where both threads pass the check before either inserts.
+      changes:
+        - createTable:
+            tableName: idempotency_record
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: payment_reference
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: trace_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scheme
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: result_status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: first_seen_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_idempotency_trace_id
+            tableName: idempotency_record
+            columns:
+              - column:
+                  name: trace_id

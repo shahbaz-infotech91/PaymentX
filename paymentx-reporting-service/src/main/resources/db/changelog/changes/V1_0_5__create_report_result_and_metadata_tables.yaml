@@ -1,0 +1,28 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_5-create-report-result-table
+      author: reporting-service
+      comment: The generated report data, immutable JSON snapshot.
+      changes:
+        - createTable:
+            tableName: report_result
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: report_execution_id, type: UUID, constraints: { nullable: false, unique: true } }
+              - column: { name: result_data, type: JSONB }
+        - addForeignKeyConstraint: { baseTableName: report_result, baseColumnNames: report_execution_id, referencedTableName: report_execution, referencedColumnNames: id, constraintName: fk_report_result_execution, onDelete: CASCADE }
+
+  - changeSet:
+      id: V1_0_5-create-report-metadata-table
+      author: reporting-service
+      comment: Provenance metadata about a generated report, separate from its data.
+      changes:
+        - createTable:
+            tableName: report_metadata
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: report_execution_id, type: UUID, constraints: { nullable: false, unique: true } }
+              - column: { name: source_services, type: VARCHAR(512) }
+              - column: { name: data_as_of, type: TIMESTAMP WITH TIME ZONE, constraints: { nullable: false } }
+              - column: { name: generator_version, type: VARCHAR(32) }
+        - addForeignKeyConstraint: { baseTableName: report_metadata, baseColumnNames: report_execution_id, referencedTableName: report_execution, referencedColumnNames: id, constraintName: fk_report_metadata_execution, onDelete: CASCADE }

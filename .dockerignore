@@ -1,0 +1,36 @@
+# ENGLISH: Repo-wide Docker build-context excludes (Phase 6 - added for
+# paymentx-control-center's own Docker support, but safe and correct
+# for every existing service's Dockerfile too, since none of them ever
+# reference target/, node_modules/, .git/, or log files from inside a
+# build - only pom.xml/package.json and src/ are actually needed).
+# Mirrors the exact same exclusion list already in the root
+# .gitignore. Without this file, every `docker build` in this repo
+# was silently sending the ENTIRE monorepo (every module's target/,
+# paymentx-control-center/frontend/node_modules/, .git history) as
+# build context - slow, and directly against this phase's "keep the
+# distribution lightweight" requirement.
+#
+# HINGLISH: Repo-wide Docker build-context excludes (Phase 6 -
+# paymentx-control-center ke apne Docker support ke liye add kiya
+# gaya, lekin har existing service ke Dockerfile ke liye bhi safe aur
+# correct hai, kyunki inme se koi bhi build ke andar se kabhi target/,
+# node_modules/, .git/, ya log files reference nahi karta - sirf
+# pom.xml/package.json aur src/ hi actually chahiye. Root .gitignore
+# me already maujood usi exclusion list ko mirror karta hai. Is file
+# ke bina, is repo ka har `docker build` silently poora monorepo
+# (har module ka target/, paymentx-control-center/frontend/
+# node_modules/, .git history) build context ke roop me bhej raha
+# tha - slow, aur directly is phase ke "distribution lightweight
+# rakho" requirement ke khilaaf.
+
+**/target/
+**/node_modules/
+**/dist/
+.git/
+**/*.log
+logs/
+.idea/
+*.iml
+.vscode/
+.env
+.env.local

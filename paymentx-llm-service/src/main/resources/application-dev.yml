@@ -1,0 +1,32 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# LLM Service local development profile. Unlike Prompt Service, this
+# service has no Postgres/Liquibase section - it is deliberately
+# stateless (Step 24 of the Phase 3.3 brief), so there is nothing here
+# beyond logging. LLM_API_KEY is still read from the real environment
+# variable (see application.yml's ${LLM_API_KEY:} binding) - a
+# developer running this service locally must export a real Anthropic
+# API key themselves; this file does NOT set one, hardcoded or
+# otherwise.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# LLM Service local development profile. Prompt Service ke ulat, is
+# service me koi Postgres/Liquibase section nahi hai - ye jaan-boojh kar
+# stateless hai (Phase 3.3 brief ka Step 24), isliye logging ke alawa
+# yahan kuch nahi hai. LLM_API_KEY ab bhi real environment variable se
+# hi padha jaata hai (application.yml ka ${LLM_API_KEY:} binding dekho)
+# - is service ko locally chalane wale developer ko khud ek real
+# Anthropic API key export karni hogi; ye file koi set nahi karti,
+# hardcoded ya kisi aur tarah se.
+# ====================================================================
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    org.springframework: INFO

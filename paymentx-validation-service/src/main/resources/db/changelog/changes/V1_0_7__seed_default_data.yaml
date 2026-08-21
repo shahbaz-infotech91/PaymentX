@@ -1,0 +1,86 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_7-seed-default-data
+      author: shahbaz
+      comment: >
+        Seed data so a fresh environment (local, CI) can validate a payment
+        end-to-end immediately without manual setup. BANK001/BANK002 are
+        test participants certified for all three schemes.
+      changes:
+        - insert:
+            tableName: participant
+            columns:
+              - column: { name: bank_id, value: BANK001 }
+              - column: { name: legal_name, value: "First Test Bank" }
+        - insert:
+            tableName: participant
+            columns:
+              - column: { name: bank_id, value: BANK002 }
+              - column: { name: legal_name, value: "Second Test Bank" }
+
+        - insert:
+            tableName: participant_scheme
+            columns:
+              - column: { name: participant_id, valueComputed: "(SELECT id FROM participant WHERE bank_id = 'BANK001')" }
+              - column: { name: scheme, value: INSTANT_PAYMENT }
+        - insert:
+            tableName: participant_scheme
+            columns:
+              - column: { name: participant_id, valueComputed: "(SELECT id FROM participant WHERE bank_id = 'BANK001')" }
+              - column: { name: scheme, value: CARD_PAYMENT }
+        - insert:
+            tableName: participant_scheme
+            columns:
+              - column: { name: participant_id, valueComputed: "(SELECT id FROM participant WHERE bank_id = 'BANK001')" }
+              - column: { name: scheme, value: REAL_TIME_PAYMENT }
+        - insert:
+            tableName: participant_scheme
+            columns:
+              - column: { name: participant_id, valueComputed: "(SELECT id FROM participant WHERE bank_id = 'BANK002')" }
+              - column: { name: scheme, value: INSTANT_PAYMENT }
+        - insert:
+            tableName: participant_scheme
+            columns:
+              - column: { name: participant_id, valueComputed: "(SELECT id FROM participant WHERE bank_id = 'BANK002')" }
+              - column: { name: scheme, value: CARD_PAYMENT }
+        - insert:
+            tableName: participant_scheme
+            columns:
+              - column: { name: participant_id, valueComputed: "(SELECT id FROM participant WHERE bank_id = 'BANK002')" }
+              - column: { name: scheme, value: REAL_TIME_PAYMENT }
+
+        - insert:
+            tableName: business_rule
+            columns:
+              - column: { name: rule_code, value: MAX_AMOUNT_INSTANT_PAYMENT }
+              - column: { name: rule_type, value: AMOUNT_LIMIT }
+              - column: { name: scheme, value: INSTANT_PAYMENT }
+              - column: { name: min_amount, valueNumeric: 0.01 }
+              - column: { name: max_amount, valueNumeric: 500000.00 }
+              - column: { name: description, value: "InstantPayment per-transaction limit" }
+        - insert:
+            tableName: business_rule
+            columns:
+              - column: { name: rule_code, value: MAX_AMOUNT_CARD_PAYMENT }
+              - column: { name: rule_type, value: AMOUNT_LIMIT }
+              - column: { name: scheme, value: CARD_PAYMENT }
+              - column: { name: min_amount, valueNumeric: 0.01 }
+              - column: { name: max_amount, valueNumeric: 1000000.00 }
+              - column: { name: description, value: "CARD_PAYMENT RTP per-transaction limit" }
+        - insert:
+            tableName: business_rule
+            columns:
+              - column: { name: rule_code, value: MAX_AMOUNT_REAL_TIME_PAYMENT }
+              - column: { name: rule_type, value: AMOUNT_LIMIT }
+              - column: { name: scheme, value: REAL_TIME_PAYMENT }
+              - column: { name: min_amount, valueNumeric: 0.01 }
+              - column: { name: max_amount, valueNumeric: 5000000.00 }
+              - column: { name: description, value: "REAL_TIME_PAYMENT per-transaction limit (batch-friendly, higher cap)" }
+
+        - insert:
+            tableName: blacklist
+            columns:
+              - column: { name: account_number, value: "ACC-FRAUD-001" }
+              - column: { name: bank_id, value: BANK001 }
+              - column: { name: reason, value: "Flagged for suspected fraud - seed test data" }
+              - column: { name: blacklisted_by, value: SYSTEM }

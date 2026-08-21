@@ -1,0 +1,142 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Payment Service. It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Payment Service ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-payment-service
+  profiles:
+    active: dev
+  jpa:
+    # validate, NEVER update/create - Liquibase is the single source of
+    # truth for schema. If Hibernate and Liquibase both try to manage
+    # schema, they will eventually disagree and corrupt state silently.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  cache:
+    type: redis
+
+  kafka:
+    consumer:
+      group-id: payment-service-group
+      auto-offset-reset: earliest
+      # Manual ack, not auto-commit: we only want Kafka to advance the
+      # consumer offset AFTER we have durably persisted the outcome
+      # (payment state + outbox row) in our own transaction. Auto-commit
+      # can advance the offset before processing finishes, and a crash
+      # in between means the message is silently lost - unacceptable for
+      # a payment event.
+      enable-auto-commit: false
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+    listener:
+      ack-mode: MANUAL
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus, metrics, circuitbreakers, retries
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  pattern:
+    # All four MDC keys populated by LoggingContext (Kafka/scheduler flows)
+    # and CorrelationIdFilter (HTTP flows) - see util.LoggingContext javadoc.
+    level: "%5p [correlationId=%X{correlationId} traceId=%X{traceId} paymentId=%X{paymentId} participantId=%X{participantId}]"
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      routingService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      routingService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+
+payment:
+  # Phase 1 Routing Service integration - real, minimal, additive. Calls
+  # Routing Service's own existing, already-tested resolveRoute() contract
+  # (participant-specific rule -> type-default rule -> no route) directly
+  # on its port (no API Gateway route exists for it - same convention
+  # already established by MCP Gateway's RoutingServiceClient and Control
+  # Center's ApiTesterAllowlist). enabled=true is the intended final
+  # state; false is an explicit, operator-controlled emergency rollback
+  # only - never a silent runtime fallback on a routing failure (see
+  # PaymentEngineImpl.resolveRoute()'s own javadoc for that distinction).
+  routing-client:
+    enabled: true
+    base-url: http://localhost:8084
+    connect-timeout-ms: 2000
+    read-timeout-ms: 3000
+  retry:
+    max-attempts: 3
+    initial-backoff-seconds: 30
+    backoff-multiplier: 2
+  timeout:
+    stuck-threshold-minutes: 15
+  scheduler:
+    outbox-interval-millis: 5000
+    outbox-batch-size: 50
+    outbox-max-retries: 5
+    retry-interval-millis: 10000
+    timeout-interval-millis: 60000
+    timeout-stuck-threshold-minutes: 15

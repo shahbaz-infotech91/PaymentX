@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paymentx</groupId>
+        <artifactId>paymentx-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>paymentx-common-library</artifactId>
+    <packaging>jar</packaging>
+    <name>PaymentX Common Library</name>
+    <description>Canonical shared library: cross-cutting contracts, DTOs, exceptions, utilities. No business domain models - see docs/adr/0004-paymentx-common-library.md.</description>
+
+    <dependencies>
+        <!-- Lean core only - NOT spring-boot-starter-web. A library
+             consumed by every service (including non-web services like a
+             pure Kafka consumer) must not force a servlet container onto
+             everything that depends on it. Same principle as the
+             original paymentx-common module. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Event envelope (PaymentEvent<T>) is published/consumed via
+             Kafka by every service - spring-kafka's message/header types
+             are needed here, not just downstream. -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+        </dependency>
+
+        <!-- provided scope: BaseEntity/AuditableEntity need JPA annotations
+             to COMPILE, but this library must not force a persistence
+             layer onto services that have none (API Gateway, a pure Kafka
+             router). Services that DO use these base classes already
+             bring spring-boot-starter-data-jpa themselves (same pattern
+             as Validation/Payment Service), which supplies these
+             transitively at their runtime. -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-jpa</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Core Spring Security TYPES only (JwtClaims/SecurityContext
+             helpers reference these) - NOT spring-boot-starter-security,
+             which would pull in autoconfiguration and force a security
+             filter chain decision onto every consuming service. That
+             decision belongs to each service (see Validation Service's
+             SecurityConfig for why it's an explicit, service-owned choice).
+             provided scope is REQUIRED here, not optional: even without
+             the full starter, spring-security-core's mere presence on a
+             consumer's compile classpath is enough to trigger Spring
+             Boot's SecurityAutoConfiguration via
+             @ConditionalOnClass(DefaultAuthenticationEventPublisher) -
+             confirmed from an actual build where Payment Service (no
+             SecurityConfig of its own) showed SecurityAutoConfiguration
+             as a positive match purely from this transitive dependency,
+             which left every endpoint at risk of Spring Boot's default
+             auto-generated-password lockdown. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>${mapstruct.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok-mapstruct-binding</artifactId>
+                            <version>0.2.0</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

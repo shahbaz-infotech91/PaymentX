@@ -1,0 +1,230 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-notification-table
+      author: notification-service
+      comment: >
+        Core notification table - one row per attempted delivery
+        record (channel + recipient + status + retry bookkeeping).
+      changes:
+        - createTable:
+            tableName: notification
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: source_event_type
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: channel
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: recipient
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: subject
+                  type: VARCHAR(256)
+              - column:
+                  name: body
+                  type: TEXT
+              - column:
+                  name: template_name
+                  type: VARCHAR(128)
+              - column:
+                  name: source_event_id
+                  type: VARCHAR(64)
+              - column:
+                  name: correlation_id
+                  type: VARCHAR(64)
+              - column:
+                  name: trace_id
+                  type: VARCHAR(64)
+              - column:
+                  name: participant_id
+                  type: VARCHAR(64)
+              - column:
+                  name: payment_id
+                  type: VARCHAR(64)
+              - column:
+                  name: retry_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: max_retries
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_attempt_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: next_retry_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: failure_reason
+                  type: VARCHAR(1024)
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            tableName: notification
+            columnNames: source_event_id
+            constraintName: uq_notification_source_event_id
+
+        - createIndex:
+            indexName: idx_notification_status
+            tableName: notification
+            columns:
+              - column:
+                  name: status
+        - createIndex:
+            indexName: idx_notification_channel
+            tableName: notification
+            columns:
+              - column:
+                  name: channel
+        - createIndex:
+            indexName: idx_notification_recipient
+            tableName: notification
+            columns:
+              - column:
+                  name: recipient
+        - createIndex:
+            indexName: idx_notification_participant_id
+            tableName: notification
+            columns:
+              - column:
+                  name: participant_id
+        - createIndex:
+            indexName: idx_notification_payment_id
+            tableName: notification
+            columns:
+              - column:
+                  name: payment_id
+        - createIndex:
+            indexName: idx_notification_status_next_retry
+            tableName: notification
+            columns:
+              - column:
+                  name: status
+              - column:
+                  name: next_retry_at
+
+        - sql:
+            sql: >
+              ALTER TABLE notification ADD CONSTRAINT chk_notification_channel
+              CHECK (channel IN ('EMAIL','SMS','WEBHOOK','INTERNAL','PUSH'));
+        - sql:
+            sql: >
+              ALTER TABLE notification ADD CONSTRAINT chk_notification_status
+              CHECK (status IN ('PENDING','SENDING','SENT','FAILED','RETRYING','DEAD_LETTERED'));
+        - sql:
+            sql: >
+              ALTER TABLE notification ADD CONSTRAINT chk_notification_source_event_type
+              CHECK (source_event_type IN ('PAYMENT_CREATED','PAYMENT_UPDATED','PAYMENT_ROUTED',
+              'PAYMENT_COMPLETED','PAYMENT_FAILED','PAYMENT_CANCELLED','PAYMENT_REFUNDED',
+              'VALIDATION_COMPLETED','PARTICIPANT_UPDATED','ROUTING_RULE_CHANGED',
+              'AUDIT_COMPLETED','SECURITY_EVENT'));
+
+  - changeSet:
+      id: V1_0_1-create-delivery-attempt-table
+      author: notification-service
+      comment: >
+        Detailed per-attempt history - see DeliveryAttempt entity's
+        javadoc for why this uses BaseEntity (id only) rather than
+        the full audit-column set.
+      changes:
+        - createTable:
+            tableName: delivery_attempt
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: notification_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attempt_number
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: error_message
+                  type: VARCHAR(1024)
+              - column:
+                  name: response_code
+                  type: INT
+              - column:
+                  name: attempted_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: delivery_attempt
+            baseColumnNames: notification_id
+            referencedTableName: notification
+            referencedColumnNames: id
+            constraintName: fk_delivery_attempt_notification
+            onDelete: CASCADE
+
+        - createIndex:
+            indexName: idx_delivery_attempt_notification_id
+            tableName: delivery_attempt
+            columns:
+              - column:
+                  name: notification_id

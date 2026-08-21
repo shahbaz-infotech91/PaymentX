@@ -1,0 +1,207 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Runtime configuration for MCP Gateway. Configures the web server,
+# observability, the real PaymentX business-service URLs the fixed tool
+# catalog calls, and the authorization/rate-limit/timeout/audit bounds
+# every tool invocation is subject to. Port 8097 is the next free port
+# in the AI Platform range (see PAYMENTX_PHASE_3_ARCHITECTURE.md §16)
+# after Prompt Service (8092), LLM Service (8093), Embedding Service
+# (8094), Vector Service (8095), RAG Service (8096) - originally
+# suggested for a future Agent Orchestrator, reused here since MCP
+# Gateway became its own phase (3.7) before Agent Orchestrator exists
+# (matching the exact port-reassignment precedent Vector Service and
+# RAG Service already set in Phases 3.5/3.6).
+#
+# payment-service is called THROUGH the real API Gateway (port 8080),
+# not directly - it is one of only two services (with validation-
+# service) the API Gateway currently routes to (see
+# paymentx-api-gateway/src/main/resources/application.yml). routing-
+# service/audit-service/reconciliation-service have no gateway route
+# yet (confirmed live against paymentx-api-gateway's own
+# GatewayConfig.java) so this gateway calls them directly on their real
+# ports - the exact same real, verified split Control Center's own
+# ApiTesterAllowlist already uses for the same five services, reused
+# here rather than re-derived.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# MCP Gateway ki runtime configuration. Web server, observability, real
+# PaymentX business-service URLs jo fixed tool catalog call karta hai,
+# aur authorization/rate-limit/timeout/audit bounds jo har tool
+# invocation ke saath apply hote hain, configure karta hai. Port 8097 AI
+# Platform range ka agla free port hai (PAYMENTX_PHASE_3_ARCHITECTURE.md
+# §16 dekho) Prompt Service (8092), LLM Service (8093), Embedding
+# Service (8094), Vector Service (8095), RAG Service (8096) ke baad -
+# originally ek future Agent Orchestrator ke liye suggest kiya gaya tha,
+# yahan reuse kiya gaya kyunki MCP Gateway Agent Orchestrator se pehle
+# apna phase (3.7) ban gaya (Vector Service aur RAG Service ne Phases
+# 3.5/3.6 me already set kiya wahi exact port-reassignment precedent
+# match karte hue).
+#
+# payment-service ko real API Gateway (port 8080) ke THROUGH call kiya
+# jaata hai, seedhe nahi - ye un do services (validation-service ke
+# saath) me se ek hai jinhe API Gateway currently route karta hai
+# (paymentx-api-gateway/src/main/resources/application.yml dekho).
+# routing-service/audit-service/reconciliation-service ka abhi koi
+# gateway route nahi hai (live confirm kiya gaya paymentx-api-gateway ke
+# apne GatewayConfig.java ke against) isliye ye gateway unhe seedhe
+# unke real ports par call karta hai - exactly wahi real, verified split
+# jo Control Center ka apna ApiTesterAllowlist in hi paanch services ke
+# liye already use karta hai, yahan re-derive karne ke bajaye reuse kiya
+# gaya.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-mcp-gateway
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8097
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.mcp: DEBUG
+
+paymentx:
+  service-name: MCP Gateway
+
+# The real PaymentX business services this gateway's fixed tool catalog calls - see the class-level
+# javadoc at the top of this file for why payment-service goes through the API Gateway while the other
+# three are called directly.
+mcp:
+  payment-service-url: http://localhost:8080
+  # Phase 3.9 addition - see McpGatewayProperties.paymentServiceApiKey javadoc. Empty by default
+  # (unchanged behavior); set MCP_PAYMENT_SERVICE_API_KEY to a real key provisioned in Redis at
+  # gateway:apikey:{key} to let payment.lookup/payment.status pass API Gateway's auth filter.
+  payment-service-api-key: ${MCP_PAYMENT_SERVICE_API_KEY:}
+  routing-service-url: http://localhost:8084
+  audit-service-url: http://localhost:8085
+  reconciliation-service-url: http://localhost:8087
+  payment-connect-timeout-ms: 3000
+  payment-read-timeout-ms: 5000
+  routing-connect-timeout-ms: 3000
+  routing-read-timeout-ms: 5000
+  reconciliation-connect-timeout-ms: 3000
+  reconciliation-read-timeout-ms: 5000
+  audit-search-connect-timeout-ms: 3000
+  audit-search-read-timeout-ms: 8000
+  audit-write-connect-timeout-ms: 2000
+  audit-write-read-timeout-ms: 3000
+  # Step 44/45 - bounded pagination/output size for list/search tools (audit.search is the only one).
+  audit-search-max-page-size: 50
+  audit-search-default-page-size: 20
+  # Step 26/27 - per (callerId, toolName) sliding-window rate limit, backed by a real Resilience4j
+  # RateLimiterRegistry instance created per key (see ratelimit/ToolCallRateLimiter.java).
+  rate-limit-permits-per-period: 30
+  rate-limit-period-seconds: 60
+  rate-limit-timeout-millis: 0
+
+# One real Resilience4j instance per downstream business-service dependency this gateway calls - same
+# "four separate instances, not one shared instance" reasoning as RAG Service's ResilienceConfig (a slow
+# reconciliation-service should not open the circuit breaker guarding payment-service calls), and the same
+# RetryConfigCustomizer-reads-a-per-instance-retryable-flag pattern (see config/ResilienceConfig.java) -
+# because every failure this gateway's clients throw is the same McpException class with a `retryable`
+# flag that differs per failure kind, which YAML's class-based retry-exceptions/ignore-exceptions lists
+# cannot express for a single type.
+resilience4j:
+  circuitbreaker:
+    instances:
+      paymentService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      routingService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      reconciliationService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      auditService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      # Step 24 - read-only tools may retry transient failures; retryable is decided per-call by
+      # McpException.isRetryable() (RetryConfigCustomizer predicate), never blindly by class.
+      paymentService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      routingService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      reconciliationService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      auditService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true

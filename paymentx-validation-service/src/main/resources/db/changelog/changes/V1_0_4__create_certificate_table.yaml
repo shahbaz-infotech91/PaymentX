@@ -1,0 +1,58 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_4-create-certificate-table
+      author: shahbaz
+      comment: >
+        Tracks mTLS/JWT signing certificates per participant, mirroring the
+        "Kafka Security Layer - mTLS · AWS Secrets Manager" box on the
+        architecture diagram for the REAL_TIME_PAYMENT path. We store certificate METADATA
+        here (fingerprint, expiry, status) - never the private key itself.
+        Actual key material belongs in AWS Secrets Manager / KMS, not a
+        Postgres row. This table lets Validation Service reject a payment
+        whose signing certificate has expired, without needing to call out
+        to Secrets Manager on every single request.
+      changes:
+        - createTable:
+            tableName: certificate
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: participant_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_certificate_participant
+                    references: participant(id)
+              - column:
+                  name: fingerprint
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  defaultValue: ACTIVE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: issued_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_certificate_participant
+            tableName: certificate
+            columns:
+              - column:
+                  name: participant_id

@@ -1,0 +1,76 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Prompt Service. It configures database, security, and observability
+# settings this service reads on startup - other services never read
+# this file directly, each service owns and loads only its own
+# configuration. Port 8092 is the next free port after the 7 existing
+# AI Platform / business ports (8080-8089 are taken by the 9 business
+# services + Control Center backend; see
+# PAYMENTX_PHASE_3_ARCHITECTURE.md §16 for the full 8091-8097 AI
+# Platform port allocation).
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Prompt Service ki runtime configuration hai. Isme
+# database, security, aur observability settings hain jo startup pe
+# padhe jaate hain - dusri services ye file kabhi seedhe nahi padhti,
+# har service sirf apni configuration khud load karti hai. Port 8092
+# 7 existing AI Platform/business ports ke baad agla free port hai
+# (8080-8089 par 9 business services + Control Center backend hain;
+# poora 8091-8097 AI Platform port allocation ke liye
+# PAYMENTX_PHASE_3_ARCHITECTURE.md §16 dekho).
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-prompt-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8092
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.prompt: DEBUG
+
+paymentx:
+  service-name: Prompt Service

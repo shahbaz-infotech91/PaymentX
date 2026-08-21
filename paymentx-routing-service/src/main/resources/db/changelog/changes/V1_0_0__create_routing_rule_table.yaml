@@ -1,0 +1,102 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-routing-rule-table
+      author: routing-service
+      comment: >
+        Core routing table - a rule maps a scheme (+ optionally a
+        specific participant) to a target route, with a priority and an
+        active flag. A NULL participant_id rule is the default/fallback
+        for that scheme (see RoutingRule entity javadoc for the full
+        design rationale on why one table serves both cases).
+      changes:
+        - createTable:
+            tableName: routing_rule
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: scheme
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: participant_id
+                  type: VARCHAR(64)
+              - column:
+                  name: target_route
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: priority
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_default
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(512)
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_routing_rule_scheme_participant
+            tableName: routing_rule
+            columns:
+              - column:
+                  name: scheme
+              - column:
+                  name: participant_id
+        - createIndex:
+            indexName: idx_routing_rule_scheme_default
+            tableName: routing_rule
+            columns:
+              - column:
+                  name: scheme
+              - column:
+                  name: is_default
+        - sql:
+            sql: >
+              ALTER TABLE routing_rule ADD CONSTRAINT chk_routing_rule_scheme
+              CHECK (scheme IN ('INSTANT_PAYMENT', 'REAL_TIME_PAYMENT', 'CARD_PAYMENT'));

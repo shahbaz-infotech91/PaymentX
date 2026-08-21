@@ -1,0 +1,26 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_7-create-report-export-table
+      author: reporting-service
+      comment: One exported file of a report in a specific format.
+      changes:
+        - createTable:
+            tableName: report_export
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: report_execution_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: format, type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: storage_path, type: VARCHAR(512), constraints: { nullable: false } }
+              - column: { name: file_size_bytes, type: BIGINT }
+              - column: { name: download_count, type: INT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: created_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: updated_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - addForeignKeyConstraint: { baseTableName: report_export, baseColumnNames: report_execution_id, referencedTableName: report_execution, referencedColumnNames: id, constraintName: fk_report_export_execution, onDelete: CASCADE }
+        - createIndex: { indexName: idx_report_export_execution_format, tableName: report_export, columns: [ { column: { name: report_execution_id } }, { column: { name: format } } ] }
+        - sql:
+            sql: >
+              ALTER TABLE report_export ADD CONSTRAINT chk_report_export_format
+              CHECK (format IN ('CSV','XLSX','PDF','JSON'));

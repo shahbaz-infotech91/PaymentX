@@ -1,0 +1,76 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Auth Service. It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Auth Service ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-auth-service
+  # Regression-remediation fix (Defect 3): this service had no active-profile
+  # declaration at all, unlike every other service's application.yml (e.g.
+  # audit-service's identical spring.profiles.active: dev). Without it, running
+  # locally with no SPRING_PROFILES_ACTIVE env var fell back to the base
+  # profile only, which had no real datasource - confirmed via startup log
+  # showing zero Hikari/DataSource lines. This makes local/dev startup pick up
+  # the new application-dev.yml below, matching the platform-wide convention.
+  profiles:
+    active: dev
+
+server:
+  port: 8081
+
+# Actuator exposes health/metrics endpoints - these are what Kubernetes
+# liveness/readiness probes and Prometheus scraping will hit later.
+# We deliberately expose only these two now, not '*' - unrestricted actuator
+# exposure is a real PCI-DSS finding auditors flag (info disclosure risk).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  pattern:
+    # %X{correlationId} pulls from the MDC our CorrelationIdFilter populates.
+    # Without this pattern, the filter does nothing useful - MDC data isn't
+    # printed unless the log pattern references it explicitly.
+    level: "%5p [%X{correlationId}]"
+
+# Auth implementation: secret is bound from the SAME GATEWAY_JWT_SECRET
+# environment variable, with the IDENTICAL self-labeled local-dev-only
+# fallback literal API Gateway's own application.yml already uses
+# (gateway.security.jwt-secret) - not a new secret, the existing one,
+# reused, so both services agree on the same signing key in every
+# environment without duplicating a literal anywhere. See
+# PAYMENTX_AUTH_IMPLEMENTATION.md for the full rationale.
+auth:
+  jwt:
+    secret: ${GATEWAY_JWT_SECRET:local-dev-only-secret-change-me-32chars}
+    issuer: paymentx-auth-service
+    access-token-ttl-seconds: 1800
+
+---
+# Profile-specific overrides activated via SPRING_PROFILES_ACTIVE=docker
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/paymentx_auth

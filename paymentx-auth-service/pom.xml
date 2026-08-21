@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paymentx</groupId>
+        <artifactId>paymentx-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>paymentx-auth-service</artifactId>
+    <packaging>jar</packaging>
+    <name>PaymentX Auth Service</name>
+    <description>JWT issuance and verification service</description>
+
+    <dependencies>
+        <!--
+            FIX: this was pointing at the legacy "paymentx-common" module
+            (3 classes: PaymentEvent, an older PaymentXException,
+            CorrelationIdFilter) - Auth Service was the ONLY service in
+            the entire platform still depending on it; every other one of
+            the other 15 services already depends on paymentx-common-library
+            (ApiResponse/ErrorResponse/SecurityConstants/AuditableEntity/
+            UnauthorizedException/HeaderConstants/etc. all live there, not
+            in the legacy module). This had zero visible effect until now
+            because Auth Service's only 2 pre-existing classes
+            (AuthServiceApplication, SecurityConfig) never imported
+            anything from either module - discovered only now that real
+            business logic needs the shared DTOs/exceptions every other
+            service already uses. Corrected to the real module; nothing
+            else in this file changed.
+        -->
+        <dependency>
+            <groupId>com.paymentx</groupId>
+            <artifactId>paymentx-common-library</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!--
+            Regression-remediation fix (Defect 3): Auth Service had NO datasource
+            dependency at all - its application.yml's "docker" profile referenced a
+            spring.datasource.url with no driver on the classpath, so it was dead
+            config even in docker. Adding only the JPA starter + driver (the same
+            pair every other PaymentX service uses) to establish a real, pooled
+            PostgreSQL connection. Deliberately NOT adding liquibase-core here: this
+            service has zero @Entity classes today (it is a bare skeleton - see
+            AuthServiceApplication's own javadoc), and paymentx_auth has zero tables,
+            so there is no schema to manage. Adding Liquibase would mean designing a
+            new schema, which is out of scope for a connectivity fix.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!--
+            JWT issuance for the new login endpoint. Same library
+            (com.nimbusds:nimbus-jose-jwt) API Gateway already uses
+            transitively (via spring-security-oauth2-jose) to VALIDATE
+            tokens - reused here for consistency rather than introducing a
+            second, different JWT library for the other half of the same
+            contract. Version is managed by the parent Spring Boot BOM.
+        -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <!-- Not managed by the parent Spring Boot BOM when declared
+                 directly (only when pulled transitively via
+                 spring-security-oauth2-jose) - pinned to the exact same
+                 version API Gateway already resolves transitively, confirmed
+                 via `mvn dependency:tree` on paymentx-api-gateway. -->
+            <version>9.37.4</version>
+        </dependency>
+        <!--
+            Auth Service now has a real schema to manage (auth_user,
+            auth_user_role) - unlike the earlier connectivity-only
+            remediation, which deliberately omitted this because there was
+            no schema yet. Same Liquibase convention every other service
+            with real entities already uses.
+        -->
+        <dependency>
+            <groupId>org.liquibase</groupId>
+            <artifactId>liquibase-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!--
+            Every other service module has this. auth-service's
+            application.yml already lists "prometheus" in
+            management.endpoints.web.exposure.include, but without this
+            dependency on the classpath /actuator/prometheus 404s - the
+            config alone doesn't register the endpoint. Found and fixed
+            during Phase 1 validation while wiring up real Prometheus
+            scraping for all 9 services (prior config only covered 3).
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Regression-remediation fix (Defect 4): needed by the new
+             AuthServiceApplicationTests / AuthServiceSecurityTest, same
+             module used by paymentx-routing-service's RoutingSecurityTest. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

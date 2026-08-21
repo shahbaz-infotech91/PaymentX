@@ -1,0 +1,97 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Vector Service. It configures database, security, and observability
+# settings this service reads on startup - other services never read
+# this file directly, each service owns and loads only its own
+# configuration. Port 8095 is the next free port in the AI Platform
+# range (8091-8097, see PAYMENTX_PHASE_3_ARCHITECTURE.md §16) after
+# Prompt Service (8092), LLM Service (8093), Embedding Service (8094) -
+# originally suggested for a future RAG Service, reassigned here since
+# Vector Database became its own phase (3.5) before RAG Service exists.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Vector Service ki runtime configuration hai. Isme
+# database, security, aur observability settings hain jo startup pe
+# padhe jaate hain - dusri services ye file kabhi seedhe nahi padhti,
+# har service sirf apni configuration khud load karti hai. Port 8095 AI
+# Platform range (8091-8097, PAYMENTX_PHASE_3_ARCHITECTURE.md §16
+# dekho) ka agla free port hai Prompt Service (8092), LLM Service
+# (8093), Embedding Service (8094) ke baad - originally ek future RAG
+# Service ke liye suggest kiya gaya tha, yahan reassign kiya gaya kyunki
+# Vector Database RAG Service se pehle apna phase (3.5) ban gaya.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-vector-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+server:
+  port: 8095
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.vector: DEBUG
+
+paymentx:
+  service-name: Vector Service
+
+# Step 21's tunable, database-protecting topK ceiling; Step 3/8's
+# provider/model defaulting - see VectorProperties' javadoc.
+# Phase 3.5 vector database migration: default-provider/default-model/dimension changed from
+# openai/text-embedding-3-small/1536 to match Phase 3.4's local Embedding Service default.
+vector:
+  default-provider: ${VECTOR_DEFAULT_PROVIDER:local}
+  default-model: ${VECTOR_DEFAULT_MODEL:sentence-transformers/all-MiniLM-L6-v2}
+  dimension: ${VECTOR_DIMENSION:384}
+  default-top-k: 5
+  max-top-k: 100

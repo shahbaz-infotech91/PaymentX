@@ -1,0 +1,20 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_9-improve-payment-settlement-table
+      author: shahbaz
+      comment: >
+        external_settlement_ref -> settlement_reference and settled_at ->
+        settlement_date. settlement_status was already correctly named -
+        no change needed there, an example of "review and keep unchanged
+        where already correct" rather than renaming for the sake of it.
+      changes:
+        - renameColumn:
+            tableName: payment_settlement
+            oldColumnName: external_settlement_ref
+            newColumnName: settlement_reference
+            columnDataType: VARCHAR(128)
+        - renameColumn:
+            tableName: payment_settlement
+            oldColumnName: settled_at
+            newColumnName: settlement_date
+            columnDataType: TIMESTAMP WITH TIME ZONE

@@ -1,0 +1,132 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Api Gateway Service. It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Api Gateway Service ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-api-gateway
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 3000
+            response-timeout: 10s
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  http:
+    codecs:
+      max-in-memory-size: 2MB
+
+server:
+  port: 8080
+
+gateway:
+  routes:
+    validation-service-uri: http://localhost:8082
+    payment-service-uri: http://localhost:8083
+
+  request:
+    max-size-bytes: 1048576
+
+  security:
+    jwt-secret: ${GATEWAY_JWT_SECRET:local-dev-only-secret-change-me-32chars}
+    jwt-clock-skew-seconds: 30
+
+    public-paths:
+      - /actuator/**
+      - /swagger-ui/**
+      - /swagger-ui.html
+      - /api-docs/**
+      - /v3/api-docs/**
+      - /fallback
+
+    rate-limit:
+      replenish-rate-per-second: 20
+      burst-capacity: 40
+      requested-tokens: 1
+
+    idempotency:
+      ttl-seconds: 86400
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics,gateway
+
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+  health:
+    redis:
+      enabled: true
+
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+  tracing:
+    sampling:
+      probability: 1.0
+
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  pattern:
+    level: "%5p [correlationId=%X{correlationId} traceId=%X{traceId}]"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  data:
+    redis:
+      host: redis
+
+gateway:
+  routes:
+    validation-service-uri: http://paymentx-validation-service:8082
+    payment-service-uri: http://paymentx-payment-service:8083
+
+management:
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans

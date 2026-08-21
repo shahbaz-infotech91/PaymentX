@@ -1,0 +1,23 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This is the Liquibase master changelog for the notification service.
+# It lists every schema-migration changeset in the order they must be
+# applied - Liquibase reads this file on startup and runs any
+# changeset not yet recorded in its own tracking table, so the
+# database schema always matches what this service's entities expect.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Ye notification service ka Liquibase master changelog hai. Isme har
+# schema-migration changeset us order me listed hai jisme unhe apply
+# hona chahiye - Liquibase startup pe ye file padhti hai aur jo bhi
+# changeset abhi tak apply nahi hua use chala deti hai, taaki database
+# schema hamesha is service ki entities ke expectations se match kare.
+# ====================================================================
+
+databaseChangeLog:
+
+  - include:
+      file: db/changelog/changes/V1_0_0__create_notification_tables.yaml

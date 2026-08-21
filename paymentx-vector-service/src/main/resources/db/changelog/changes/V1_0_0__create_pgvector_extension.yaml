@@ -1,0 +1,28 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-pgvector-extension
+      author: vector-service
+      comment: >
+        Step 3 of the Phase 3.5 brief - CREATE EXTENSION IF NOT EXISTS
+        vector, versioned through Liquibase like every other schema
+        change in this platform, never applied by hand outside the
+        migration mechanism. IF NOT EXISTS makes this changeset
+        idempotent/safe to re-run (Liquibase's own changelog tracking
+        table already prevents re-execution in the normal case, but the
+        SQL itself stays safe even if that tracking were ever bypassed).
+        Requires infra/docker-compose.yml's postgres image to be
+        pgvector-enabled (pgvector/pgvector:0.8.0-pg16, changed from
+        postgres:16-alpine as part of this same phase - see that file's
+        own comment) - the extension's binary/control files must exist
+        on the Postgres image itself before CREATE EXTENSION can
+        succeed; this changeset cannot install the extension binaries,
+        only activate them.
+        No explicit rollback: block - matches this platform's existing
+        convention (Prompt Service's/Routing Service's own raw `sql:`
+        changesets, e.g. their CHECK-constraint additions, carry none
+        either); Liquibase's own changelog tracking table is what
+        prevents re-running this changeset, which is the actual
+        idempotency guarantee that matters day to day.
+      changes:
+        - sql:
+            sql: CREATE EXTENSION IF NOT EXISTS vector;

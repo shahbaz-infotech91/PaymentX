@@ -1,0 +1,22 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Liquibase master changelog for Auth Service. Lists every schema
+# migration in the order it must apply - matches the exact convention
+# every other PaymentX service with a real schema already uses (see
+# e.g. paymentx-audit-service's own db.changelog-master.yaml).
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Auth Service ka Liquibase master changelog. Har schema migration us
+# order me listed hai jisme apply hona chahiye - exactly wahi convention
+# jo har dusri real-schema-wali PaymentX service already use karti hai.
+# ====================================================================
+
+databaseChangeLog:
+
+  - include:
+      file: db/changelog/changes/V1_0_0__create_auth_user_tables.yaml
+  - include:
+      file: db/changelog/changes/V1_0_1__seed_dev_test_user.yaml

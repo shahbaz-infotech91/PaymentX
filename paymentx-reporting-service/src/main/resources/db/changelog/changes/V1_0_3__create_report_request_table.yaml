@@ -1,0 +1,36 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_3-create-report-request-table
+      author: reporting-service
+      comment: One caller's request to generate a report.
+      changes:
+        - createTable:
+            tableName: report_request
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: report_type, type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: report_format, type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: frequency, type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: date_from, type: TIMESTAMP WITH TIME ZONE }
+              - column: { name: date_to, type: TIMESTAMP WITH TIME ZONE }
+              - column: { name: participant_id, type: VARCHAR(64) }
+              - column: { name: currency, type: VARCHAR(3) }
+              - column: { name: additional_filters, type: JSONB }
+              - column: { name: requested_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: correlation_id, type: VARCHAR(64) }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: created_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: updated_by, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - createIndex: { indexName: idx_report_request_type, tableName: report_request, columns: [ { column: { name: report_type } } ] }
+        - createIndex: { indexName: idx_report_request_participant, tableName: report_request, columns: [ { column: { name: participant_id } } ] }
+        - createIndex: { indexName: idx_report_request_correlation, tableName: report_request, columns: [ { column: { name: correlation_id } } ] }
+        - sql:
+            sql: >
+              ALTER TABLE report_request ADD CONSTRAINT chk_report_request_format
+              CHECK (report_format IN ('CSV','XLSX','PDF','JSON'));
+        - sql:
+            sql: >
+              ALTER TABLE report_request ADD CONSTRAINT chk_report_request_frequency
+              CHECK (frequency IN ('DAILY','WEEKLY','MONTHLY','YEARLY','ON_DEMAND'));

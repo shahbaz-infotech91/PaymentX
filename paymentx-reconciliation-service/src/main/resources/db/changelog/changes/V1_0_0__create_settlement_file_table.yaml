@@ -1,0 +1,92 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-settlement-file-table
+      author: reconciliation-service
+      comment: >
+        Uploaded settlement files. checksum_hash uniquely constrained
+        for file-level duplicate detection. file_content stores the raw
+        bytes durably (see SettlementFile entity's javadoc for why -
+        MultipartFile cannot cross the async batch-processing boundary).
+      changes:
+        - createTable:
+            tableName: settlement_file
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: file_name
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: file_type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: file_size_bytes
+                  type: BIGINT
+              - column:
+                  name: record_count
+                  type: INT
+              - column:
+                  name: checksum_hash
+                  type: VARCHAR(64)
+              - column:
+                  name: failure_reason
+                  type: VARCHAR(1024)
+              - column:
+                  name: storage_path
+                  type: VARCHAR(512)
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            tableName: settlement_file
+            columnNames: checksum_hash
+            constraintName: uq_settlement_file_checksum_hash
+
+        - sql:
+            sql: >
+              ALTER TABLE settlement_file ADD CONSTRAINT chk_settlement_file_type
+              CHECK (file_type IN ('CSV','JSON','XML'));
+        - sql:
+            sql: >
+              ALTER TABLE settlement_file ADD CONSTRAINT chk_settlement_file_status
+              CHECK (status IN ('UPLOADED','PROCESSING','PROCESSED','FAILED'));

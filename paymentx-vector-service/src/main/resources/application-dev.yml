@@ -1,0 +1,54 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Vector Service local development profile - Postgres on localhost.
+# Connects to the SAME shared `paymentx_ai` database Prompt Service
+# already uses (Step 2 of the Phase 3.5 brief: "Do not create a second
+# PostgreSQL instance") - this service owns ai_document/
+# ai_document_chunk/ai_document_embedding via its own Liquibase
+# changelog, exactly the deliberate one-shared-database convention
+# PAYMENTX_PHASE_3_ARCHITECTURE.md §6 established. REQUIRES the
+# pgvector-enabled Postgres image (see infra/docker-compose.yml's
+# postgres service, changed from postgres:16-alpine to
+# pgvector/pgvector:0.8.0-pg16 as part of this same phase) - against a
+# plain postgres:16-alpine image, V1_0_0__create_pgvector_extension.yaml
+# fails at startup with "extension \"vector\" is not available."
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Vector Service local development profile - Postgres localhost par.
+# Usi shared `paymentx_ai` database se connect karta hai jo Prompt
+# Service already use karti hai (Phase 3.5 brief ka Step 2: "Ek doosra
+# PostgreSQL instance create mat karo") - ye service ai_document/
+# ai_document_chunk/ai_document_embedding ka malik hai apni Liquibase
+# changelog ke through, exactly wahi jaan-boojh kar one-shared-database
+# convention jo PAYMENTX_PHASE_3_ARCHITECTURE.md §6 ne establish kiya
+# tha. Pgvector-enabled Postgres image REQUIRE karta hai
+# (infra/docker-compose.yml ki postgres service dekho, postgres:16-
+# alpine se pgvector/pgvector:0.8.0-pg16 me is same phase ke hisse ke
+# roop me badli gayi) - ek plain postgres:16-alpine image ke against,
+# V1_0_0__create_pgvector_extension.yaml startup par
+# "extension \"vector\" is not available" ke saath fail hota hai.
+# ====================================================================
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/paymentx_ai
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    org.springframework: INFO

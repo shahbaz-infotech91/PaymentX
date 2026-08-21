@@ -1,0 +1,37 @@
+# PaymentX - Grafana datasource provisioning
+#
+# WHY this file exists: Grafana was running with zero configured
+# datasources (confirmed via GET /api/datasources -> [] and an empty
+# /etc/grafana/provisioning/datasources/ inside the container) - it could
+# not query Prometheus or anything else. No provisioning was ever wired up
+# anywhere in this repo; grafana was added to docker-compose.yml as a bare
+# container with no config (see docker-compose.yml's own comment on the
+# grafana/mailhog services being former "orphan containers").
+#
+# WHY provisioning, not manual UI setup: a manually-added datasource lives
+# only in Grafana's sqlite state inside the container and is lost on
+# `docker compose down` / volume removal. Provisioning is the documented,
+# repeatable way to guarantee Grafana always has this datasource the
+# instant it starts, matching how the rest of this repo's infra is
+# declared as code (docker-compose.yml, prometheus.yml).
+#
+# WHY http://prometheus:9090, not localhost:9090: Grafana and Prometheus
+# are separate containers on the same docker-compose network
+# (infra_default) - "prometheus" resolves via Docker's embedded DNS
+# between containers on that network (confirmed: paymentx-prometheus's
+# network aliases include "prometheus"). This is the same
+# container-to-container pattern the platform already uses elsewhere;
+# it's the opposite direction from prometheus.yml's host.docker.internal
+# targets (Prometheus reaching HOST-level java processes, not another
+# container).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: 15s

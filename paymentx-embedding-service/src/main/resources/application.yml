@@ -1,0 +1,142 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Runtime configuration for Embedding Service. Configures the web
+# server, observability, and the embedding.* provider settings this
+# service reads on startup - other services never read this file
+# directly, each service owns and loads only its own configuration.
+# EMBEDDING_API_KEY has NO default anywhere in this file (see the
+# ${EMBEDDING_API_KEY:} empty-placeholder default below) - see
+# EmbeddingProperties' javadoc for why an empty default, not a missing
+# one, is the deliberate choice here.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Embedding Service ki runtime configuration. Web server,
+# observability, aur is service ke embedding.* provider settings
+# configure karta hai jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai. EMBEDDING_API_KEY ka is file me kahin bhi koi
+# default NAHI hai (neeche ${EMBEDDING_API_KEY:} empty-placeholder
+# default dekho) - EmbeddingProperties ka javadoc dekho ki ek empty
+# default, ek missing default nahi, yahan jaan-boojh kar kyun choose
+# kiya gaya.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-embedding-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8094
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.embedding: DEBUG
+
+paymentx:
+  service-name: Embedding Service
+
+# Phase 3.4 LOCAL EMBEDDING MIGRATION: "local" is now the default provider - the normal runtime path no
+# longer requires EMBEDDING_API_KEY or a network call to api.openai.com. See
+# PAYMENTX_PHASE_3_4_LOCAL_EMBEDDING.md for the full migration rationale, model selection, and why the
+# openai.* section below is kept (still real, still fully functional - an operator can opt back in with
+# EMBEDDING_PROVIDER=openai). api-key deliberately has an EMPTY placeholder default (":" with nothing
+# after it), never a real- or fake-looking value.
+embedding:
+  enabled: ${EMBEDDING_ENABLED:true}
+  provider: ${EMBEDDING_PROVIDER:local}
+  max-input-length: ${EMBEDDING_MAX_INPUT_LENGTH:8000}
+  max-batch-size: ${EMBEDDING_MAX_BATCH_SIZE:50}
+  openai:
+    api-key: ${EMBEDDING_API_KEY:}
+    model: ${EMBEDDING_MODEL:text-embedding-3-small}
+    base-url: ${EMBEDDING_BASE_URL:https://api.openai.com/v1}
+    dimension: ${EMBEDDING_DIMENSION:1536}
+    connect-timeout-ms: ${EMBEDDING_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${EMBEDDING_READ_TIMEOUT_MS:30000}
+  # Phase 3.4 local-embedding migration addition - see EmbeddingProperties.Local's javadoc for what each
+  # value means and why sentence-transformers/all-MiniLM-L6-v2 (384 dimensions) was selected.
+  local:
+    model: ${EMBEDDING_LOCAL_MODEL:sentence-transformers/all-MiniLM-L6-v2}
+    dimension: ${EMBEDDING_LOCAL_DIMENSION:384}
+    max-sequence-length: ${EMBEDDING_LOCAL_MAX_SEQ_LENGTH:256}
+    cache-dir: ${EMBEDDING_LOCAL_CACHE_DIR:}
+
+# Reuses the exact instance-naming/tuning pattern LLM Service's
+# `llmProvider` instance established in Phase 3.3 (itself reusing
+# payment-service's already-configured `routingService` shape) - one
+# more real Resilience4j instance, `embeddingProvider`, actually wired
+# to OpenAiEmbeddingProvider.embed via
+# @CircuitBreaker/@Retry/@RateLimiter. See
+# config/ResilienceConfig.java's javadoc for why retryExceptions/
+# ignoreExceptions class lists cannot express this service's
+# retry-vs-ignore decision and a RetryConfigCustomizer predicate is used
+# instead. rate-limiter is new to this phase (Step 15 - "at minimum
+# protect the provider from unbounded concurrency") - 20 calls per
+# 1-second refresh period, callers wait up to 2s for a permit before
+# failing, a conservative default an operator can tune without a code
+# change.
+resilience4j:
+  circuitbreaker:
+    instances:
+      embeddingProvider:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      embeddingProvider:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+  ratelimiter:
+    instances:
+      embeddingProvider:
+        limit-for-period: 20
+        limit-refresh-period: 1s
+        timeout-duration: 2s

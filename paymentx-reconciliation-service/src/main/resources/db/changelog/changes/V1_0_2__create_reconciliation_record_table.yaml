@@ -1,0 +1,124 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_2-create-reconciliation-record-table
+      author: reconciliation-service
+      comment: One row per compared transaction (internal vs external).
+      changes:
+        - createTable:
+            tableName: reconciliation_record
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: batch_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: payment_id
+                  type: VARCHAR(64)
+              - column:
+                  name: reference_id
+                  type: VARCHAR(128)
+              - column:
+                  name: participant_id
+                  type: VARCHAR(64)
+              - column:
+                  name: internal_amount
+                  type: DECIMAL(19,4)
+              - column:
+                  name: external_amount
+                  type: DECIMAL(19,4)
+              - column:
+                  name: internal_currency
+                  type: VARCHAR(3)
+              - column:
+                  name: external_currency
+                  type: VARCHAR(3)
+              - column:
+                  name: internal_status
+                  type: VARCHAR(32)
+              - column:
+                  name: external_status
+                  type: VARCHAR(32)
+              - column:
+                  name: internal_settlement_date
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: external_settlement_date
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: reconciliation_status
+                  type: VARCHAR(24)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: metadata
+                  type: JSONB
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: reconciliation_record
+            baseColumnNames: batch_id
+            referencedTableName: reconciliation_batch
+            referencedColumnNames: id
+            constraintName: fk_reconciliation_record_batch
+            onDelete: CASCADE
+
+        - createIndex:
+            indexName: idx_reconciliation_record_batch_id
+            tableName: reconciliation_record
+            columns:
+              - column:
+                  name: batch_id
+        - createIndex:
+            indexName: idx_reconciliation_record_payment_id
+            tableName: reconciliation_record
+            columns:
+              - column:
+                  name: payment_id
+        - createIndex:
+            indexName: idx_reconciliation_record_status
+            tableName: reconciliation_record
+            columns:
+              - column:
+                  name: reconciliation_status
+
+        - sql:
+            sql: >
+              ALTER TABLE reconciliation_record ADD CONSTRAINT chk_reconciliation_record_status
+              CHECK (reconciliation_status IN ('MATCHED','MISSING','DUPLICATE','AMOUNT_MISMATCH',
+              'CURRENCY_MISMATCH','STATUS_MISMATCH','SETTLEMENT_DELAY','LATE_SETTLEMENT',
+              'ORPHAN','UNEXPECTED_SETTLEMENT'));

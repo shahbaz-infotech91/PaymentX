@@ -1,0 +1,55 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_1-seed-default-routes
+      author: routing-service
+      comment: >
+        Default (participant_id = NULL) route per scheme, so a fresh
+        environment has a working fallback route immediately - matches
+        the BANK001/BANK002 seed convention already established in
+        Validation Service.
+      changes:
+        - insert:
+            tableName: routing_rule
+            columns:
+              - column: { name: scheme, value: INSTANT_PAYMENT }
+              - column: { name: target_route, value: "instant-payment-processor" }
+              - column: { name: priority, value: 100 }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: is_default, valueBoolean: true }
+              - column: { name: description, value: "Default route for instant payment scheme" }
+              - column: { name: created_by, value: SYSTEM }
+              - column: { name: updated_by, value: SYSTEM }
+        - insert:
+            tableName: routing_rule
+            columns:
+              - column: { name: scheme, value: REAL_TIME_PAYMENT }
+              - column: { name: target_route, value: "real-time-payment-processor" }
+              - column: { name: priority, value: 100 }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: is_default, valueBoolean: true }
+              - column: { name: description, value: "Default route for real-time payment scheme" }
+              - column: { name: created_by, value: SYSTEM }
+              - column: { name: updated_by, value: SYSTEM }
+        - insert:
+            tableName: routing_rule
+            columns:
+              - column: { name: scheme, value: CARD_PAYMENT }
+              - column: { name: target_route, value: "card-payment-processor" }
+              - column: { name: priority, value: 100 }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: is_default, valueBoolean: true }
+              - column: { name: description, value: "Default route for card payment scheme" }
+              - column: { name: created_by, value: SYSTEM }
+              - column: { name: updated_by, value: SYSTEM }
+        - insert:
+            tableName: routing_rule
+            columns:
+              - column: { name: scheme, value: INSTANT_PAYMENT }
+              - column: { name: participant_id, value: BANK001 }
+              - column: { name: target_route, value: "instant-payment-processor-bank001" }
+              - column: { name: priority, value: 10 }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: is_default, valueBoolean: false }
+              - column: { name: description, value: "Participant-specific route override for BANK001" }
+              - column: { name: created_by, value: SYSTEM }
+              - column: { name: updated_by, value: SYSTEM }

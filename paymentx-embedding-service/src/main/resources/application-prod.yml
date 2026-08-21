@@ -1,0 +1,35 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Embedding Service production profile - no hardcoded secrets, matching
+# every other PaymentX service's application-prod.yml convention
+# exactly. EMBEDDING_API_KEY/EMBEDDING_MODEL/EMBEDDING_BASE_URL/
+# EMBEDDING_DIMENSION/etc. are already environment-driven in the base
+# application.yml - nothing provider-specific needs overriding here
+# beyond a lower trace sampling rate, matching every other PaymentX
+# service's prod profile.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Embedding Service production profile - koi hardcoded secrets nahi,
+# exactly har doosri PaymentX service ke application-prod.yml
+# convention se match karte hue. EMBEDDING_API_KEY/EMBEDDING_MODEL/
+# EMBEDDING_BASE_URL/EMBEDDING_DIMENSION/etc. already base
+# application.yml me environment-driven hain - yahan provider-specific
+# kuch bhi override karne ki zaroorat nahi hai, ek lower trace sampling
+# rate ke alawa, har doosri PaymentX service ke prod profile se match
+# karte hue.
+# ====================================================================
+
+server:
+  port: 8094
+
+logging:
+  level:
+    com.paymentx.embedding: INFO
+
+management:
+  tracing:
+    sampling:
+      probability: 0.1

@@ -1,0 +1,101 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_4-create-payment-outbox-table
+      author: shahbaz
+      comment: >
+        The Outbox Pattern table. A row is inserted here in the SAME
+        database transaction as the payment state change - never as a
+        separate operation. A background scheduler (Part 5) polls this
+        table (using FOR UPDATE SKIP LOCKED, safe across multiple service
+        replicas) and publishes each PENDING row to Kafka, then marks it
+        PUBLISHED. This guarantees "the DB write and the eventual Kafka
+        publish are never inconsistent" without needing distributed
+        transactions (2PC) across Postgres and Kafka.
+      changes:
+        - createTable:
+            tableName: payment_outbox
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: payment_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_outbox_payment
+                    references: payment(id)
+              - column:
+                  name: event_type
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: topic
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: payload
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  defaultValue: PENDING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: retry_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: published_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        # The draining scheduler's exact query shape: WHERE status =
+        # 'PENDING' ORDER BY created_at ASC. This composite index makes
+        # that an index-ordered scan instead of a sort-after-filter.
+        - createIndex:
+            indexName: idx_outbox_status_created_at
+            tableName: payment_outbox
+            columns:
+              - column:
+                  name: status
+              - column:
+                  name: created_at

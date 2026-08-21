@@ -1,0 +1,103 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# This configuration file contains runtime configuration required by
+# Notification Service. It configures database, Kafka, Redis, security,
+# observability, and application-specific settings this service reads
+# on startup - other services never read this file directly, each
+# service owns and loads only its own configuration.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Is file me Notification Service ki runtime configuration hai. Isme
+# database, Kafka, Redis, security, observability, aur is service ke
+# apne settings hain jo startup pe padhe jaate hain - dusri services
+# ye file kabhi seedhe nahi padhti, har service sirf apni configuration
+# khud load karti hai.
+# ====================================================================
+
+spring:
+  application:
+    name: paymentx-notification-service
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  thymeleaf:
+    cache: true
+    prefix: classpath:/templates/
+    suffix: .html
+
+server:
+  port: 8086
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+    mail:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.paymentx.notification: DEBUG
+
+paymentx:
+  service-name: Notification Service
+
+notification:
+  email:
+    from: noreply@paymentx.local
+  webhook:
+    connect-timeout-millis: 3000
+    read-timeout-millis: 5000
+    signing-secret: local-dev-only-webhook-secret-change-me
+  sms:
+    provider: mock
+  retry:
+    max-attempts: 5
+    initial-interval-millis: 2000
+    multiplier: 2.0
+    max-interval-millis: 60000
+  cache:
+    template-ttl: 1h
+    idempotency-ttl: 24h
+    dedup-ttl: 10m
+  consumer:
+    retry-initial-interval-millis: 1000
+    retry-multiplier: 2.0
+    retry-max-elapsed-millis: 8000
+  async:
+    core-pool-size: 4
+    max-pool-size: 16
+    queue-capacity: 500

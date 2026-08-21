@@ -1,0 +1,241 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# Local development infrastructure definition - spins up Postgres,
+# Kafka, Redis, and supporting tools (Kafka UI, pgAdmin, Zipkin,
+# Prometheus) so every PaymentX service has real dependencies to run
+# against locally, without needing cloud infrastructure.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# Local development infrastructure ka definition - Postgres, Kafka,
+# Redis, aur supporting tools (Kafka UI, pgAdmin, Zipkin, Prometheus)
+# start karta hai, taaki har PaymentX service ke paas local me chalne
+# ke liye real dependencies ho, cloud infrastructure ki zaroorat nahi.
+# ====================================================================
+
+version: "3.9"
+
+# WHY these specific choices are worth understanding, not just copying:
+#
+# 1. Kafka in KRaft mode (no Zookeeper): as of Kafka 3.x, KRaft is production
+#    ready and removes an entire distributed system (Zookeeper) from your
+#    stack. Real companies migrating in 2024-2025 are moving OFF Zookeeper.
+#    Learning Zookeeper-based Kafka now would be teaching you a deprecated
+#    pattern - we start with what's current.
+#
+# 2. Named volumes for Postgres/Kafka: without these, `docker-compose down`
+#    wipes your local transaction data and topic offsets, and you relearn
+#    this the hard way exactly once, usually at a bad time.
+#
+# 3. Healthchecks: services depend_on with `condition: service_healthy`,
+#    not just `depends_on: [postgres]`. Plain depends_on only waits for the
+#    CONTAINER to start, not for Postgres to be ready to accept connections.
+#    This is one of the most common causes of "works when I restart it a
+#    second time" bugs in docker-compose setups.
+
+services:
+  postgres:
+    # Phase 3.5 - changed from postgres:16-alpine to a pgvector-enabled equivalent, exactly the
+    # "one infra-affecting change" PAYMENTX_PHASE_3_ARCHITECTURE.md §15 called for. Built FROM the
+    # official postgres:16 image with the pgvector extension's binaries added - same Postgres 16 data
+    # directory format, so the existing paymentx-postgres-data named volume below is untouched and no
+    # existing data is lost by this tag change alone. Pinned to an exact version (0.8.0-pg16), not the
+    # floating `pg16` tag, matching this platform's general preference for reproducible image tags.
+    # Vector Service (paymentx-vector-service, Phase 3.5) is the only consumer of the `vector` extension
+    # today - its own V1_0_0__create_pgvector_extension.yaml Liquibase changeset activates it inside
+    # `paymentx_ai`, this image change alone does not create the extension anywhere.
+    image: pgvector/pgvector:0.8.0-pg16
+    container_name: paymentx-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # paymentx_ai: Phase 3.2 - the shared AI Platform database (Prompt Service and
+      # future LLM/Embedding/RAG/MCP Gateway/Agent Orchestrator components each own
+      # their own tables inside it via their own Liquibase changelog - a deliberate,
+      # documented deviation from one-DB-per-service, see
+      # PAYMENTX_PHASE_3_ARCHITECTURE.md §6).
+      POSTGRES_MULTIPLE_DATABASES: paymentx_auth,paymentx_validation,paymentx_payment,paymentx_routing,paymentx_audit,paymentx_notification,paymentx_reconciliation,paymentx_reporting,paymentx_ai
+    ports:
+      # 5433, not the standard 5432: a native Windows PostgreSQL 18
+      # service (Windows service "postgresql-x64-18") already occupies
+      # 5432 on this host, silently shadowing the container for any
+      # native (non-Docker) process connecting to "localhost:5432" -
+      # migrations would silently run against that unrelated, stale
+      # instance instead of this one. Stopping/disabling that service
+      # requires admin elevation this environment doesn't have, so every
+      # service's dev datasource URL below targets 5433 instead.
+      - "5433:5432"
+    volumes:
+      - paymentx-postgres-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: paymentx-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.0
+    container_name: paymentx-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: "paymentx-local-cluster-1"
+    volumes:
+      - paymentx-kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: paymentx-kafka-ui
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: paymentx-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      - kafka
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: paymentx-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI - http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: paymentx-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@paymentx.dev
+      PGADMIN_DEFAULT_PASSWORD: paymentx_local_dev
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - paymentx-pgadmin-data:/var/lib/pgadmin
+
+  # profiles: not started by a bare `docker compose up -d` (which is the
+  # documented default dev workflow - README runs every service directly via
+  # `mvn spring-boot:run` / the built jar, never this container). Without
+  # this, `docker compose up -d` tries to build this image FIRST, and its
+  # Dockerfile build context only COPYs paymentx-common-library and
+  # paymentx-api-gateway's poms - `mvn -am dependency:go-offline` inside the
+  # build then fails on every other module's missing pom.xml, which aborts
+  # the ENTIRE compose up (Postgres/Kafka/Redis/etc included) before any
+  # container is even created. Real bug found and fixed during Phase 1
+  # validation, not a pre-existing design choice.
+  api-gateway:
+    profiles: ["docker-build"]
+    build:
+      context: ..
+      dockerfile: paymentx-api-gateway/Dockerfile
+    container_name: paymentx-api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET:-local-dev-only-secret-change-me-32chars}
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: paymentx-zipkin
+    ports:
+      - "9411:9411"
+    environment:
+      # Regression-remediation fix (Defect 2): real container logs showed
+      # "Terminating due to java.lang.OutOfMemoryError: Java heap space"
+      # after ~5.5 hours of uptime, not on startup. Root cause: this
+      # service previously had no JAVA_OPTS (unpredictable auto-sized
+      # heap) and no MEM_MAX_SPANS (Zipkin's own default in-memory
+      # STORAGE_TYPE=mem keeps accumulating spans with no eviction cap),
+      # so sustained tracing traffic from this platform's own services
+      # grew the in-memory span store without bound until the heap was
+      # exhausted. Fix is config-only: give the JVM an explicit, known-
+      # sufficient heap, and cap the in-memory store so it evicts old
+      # traces instead of growing forever. Storage backend, sampling,
+      # and tracing itself are unchanged - Zipkin still receives and
+      # serves spans exactly as before.
+      - JAVA_OPTS=-Xms256m -Xmx768m
+      - MEM_MAX_SPANS=100000
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: paymentx-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  # WHY these two were previously running as undeclared/orphan containers
+  # rather than compose-managed services: nobody knows - they existed on
+  # this host before this compose file's current state, with no service
+  # block backing them (docker-compose flagged them as "orphan containers"
+  # on every `up`). Declaring them properly here means `docker compose up
+  # -d` alone is genuinely a complete "start ALL infra" command, matching
+  # what the platform validation suite depends on, instead of relying on
+  # tribal knowledge that these two must be started some other way.
+  grafana:
+    image: grafana/grafana
+    container_name: paymentx-grafana
+    ports:
+      - "3000:3000"
+    # Provisions the Prometheus datasource on startup - see
+    # grafana-provisioning/datasources/datasource.yml for the WHY. Without
+    # this mount Grafana starts with zero datasources and cannot query
+    # anything (confirmed gap - GET /api/datasources returned []).
+    volumes:
+      - ./grafana-provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: paymentx-mailhog
+    ports:
+      - "1025:1025"   # SMTP - what notification-service's EmailChannel sends to
+      - "8025:8025"   # Web UI + REST API (http://localhost:8025/api/v2/messages)
+
+volumes:
+  paymentx-postgres-data:
+  paymentx-kafka-data:
+  paymentx-pgadmin-data:

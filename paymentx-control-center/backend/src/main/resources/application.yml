@@ -1,0 +1,167 @@
+# ENGLISH: Base runtime configuration for the Control Center backend,
+# loaded on every profile. What it does: sets the app name, HTTP port
+# (8089 - the next free port after the 9 existing services' 8080-8088
+# range), actuator exposure, and control-center.* placeholder values
+# every environment shares. Why it exists: matches the exact
+# spring.application.name / server.port / management.endpoints
+# convention every other PaymentX service's application.yml already
+# uses (see e.g. paymentx-audit-service/src/main/resources/
+# application.yml), kept consistent so this module looks and behaves
+# like a real PaymentX service, not a bolted-on prototype. How it will
+# communicate with the backend: this IS backend configuration - read by
+# ControlCenterProperties at startup.
+#
+# HINGLISH: Control Center backend ki base runtime configuration, har
+# profile par load hoti hai. Ye kya karti hai: app name, HTTP port
+# (8089 - 9 existing services ki 8080-8088 range ke baad agla free
+# port), actuator exposure, aur control-center.* placeholder values set
+# karti hai jo har environment share karta hai. Ye dashboard me kyu
+# hai: exactly wahi spring.application.name / server.port /
+# management.endpoints convention match karta hai jo har dusri
+# PaymentX service ka application.yml already use karta hai (jaise
+# paymentx-audit-service/src/main/resources/application.yml dekho),
+# consistent rakha gaya hai taaki ye module ek real PaymentX service
+# jaisa dikhe aur behave kare, ek bolted-on prototype jaisa nahi.
+# Backend se kaise connect hogi: yehi backend configuration hai -
+# startup par ControlCenterProperties ise padhta hai.
+
+spring:
+  application:
+    name: paymentx-control-center-backend
+  profiles:
+    active: dev
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  # Spring Boot's own Redis auto-configuration (Lettuce) - reused
+  # directly by RedisMonitoringClient rather than hand-rolling a second
+  # connection factory bean. Real values, same instance every PaymentX
+  # service already connects to (infra/docker-compose.yml, port 6379).
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 3000ms
+  # No datasource/JPA auto-configuration here on purpose - this module
+  # has no @Entity classes and no single "the" database; see
+  # config/PostgresDataSourceConfig.java for the 7 explicit, named,
+  # read-only DataSource beans it builds instead from control-center.postgres.*.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+
+server:
+  port: 8089
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  pattern:
+    level: "%5p [correlationId=%X{correlationId}]"
+  level:
+    root: INFO
+    com.paymentx.controlcenter: DEBUG
+
+control-center:
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+  services:
+    api-gateway-url: http://localhost:8080
+    auth-service-url: http://localhost:8081
+    validation-service-url: http://localhost:8082
+    payment-service-url: http://localhost:8083
+    routing-service-url: http://localhost:8084
+    audit-service-url: http://localhost:8085
+    notification-service-url: http://localhost:8086
+    reconciliation-service-url: http://localhost:8087
+    reporting-service-url: http://localhost:8088
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+  postgres:
+    host: localhost
+    port: 5433
+    username: postgres
+    password: postgres
+    validation-db: paymentx_validation
+    payment-db: paymentx_payment
+    routing-db: paymentx_routing
+    audit-db: paymentx_audit
+    notification-db: paymentx_notification
+    reconciliation-db: paymentx_reconciliation
+    reporting-db: paymentx_reporting
+    # Regression-remediation fix: was 3. This service opens 7 separate real HikariCP pools
+    # (one per business database, PostgresDataSourceConfig) - every real Spring context
+    # load (including this module's own contextLoads test, which opens a second, parallel
+    # set of all 7 on top of the already-running instance's own 7) multiplies this by 7.
+    # Reduced to 2 - this backend only ever issues monitoring SELECTs (never a real
+    # business workload), so 2 concurrent connections per database is still real headroom,
+    # not a functional constraint - while cutting this service's own worst-case
+    # contribution to the real, measured shared-Postgres connection exhaustion (see
+    # PAYMENTX_REGRESSION_DEFECT_REMEDIATION.md, Defect 1).
+    max-pool-size: 2
+  kafka:
+    bootstrap-servers: localhost:9092
+    admin-client-timeout-ms: 8000
+  redis:
+    host: localhost
+    port: 6379
+    timeout-ms: 3000
+  rabbitmq:
+    management-url: http://localhost:15672
+    username: guest
+    password: guest
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+  prometheus:
+    base-url: http://localhost:9090
+    connect-timeout-ms: 3000
+    read-timeout-ms: 8000
+  zipkin:
+    base-url: http://localhost:9411
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+  mailhog:
+    base-url: http://localhost:8025
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+  files:
+    reports-export-directory: /tmp/paymentx-reporting/exports
+  logs:
+    output-directory: ../../paymentx-validation-output
+    max-lines-scanned-per-file: 5000
+    max-entries-returned: 1000
+  e2e:
+    max-duration-seconds: 60
+    poll-interval-millis: 1500
+    api-key-ttl-seconds: 300
+    history-limit: 20
+  # Off by default so every prior phase's verified, zero-friction local-dev
+  # behavior is unchanged - see application-prod.yml for the real production
+  # posture (enabled: true, token from CONTROL_CENTER_SECURITY_DASHBOARD_TOKEN).
+  security:
+    enabled: false
+  # Phase 3.1 AI Assistant - off by default (see ControlCenterProperties.Ai
+  # javadoc). Turning this on exposes the real POST /api/v1/ai/chat and
+  # GET /api/v1/ai/health contract, now wired end-to-end through Agent
+  # Orchestrator to real RAG/MCP/LLM/Embedding services (Phase 3.9).
+  # Phase 3.9: base/dev profile previously hardcoded `false` with no
+  # override hook (unlike application-prod.yml's ${CONTROL_CENTER_AI_ENABLED:false}),
+  # so there was no backward-compatible way to turn AI on for a real E2E
+  # run without editing this file. Matching prod's pattern here keeps the
+  # default OFF (identical behavior for anyone not setting the env var)
+  # while letting an operator opt in via CONTROL_CENTER_AI_ENABLED=true.
+  # HINGLISH: Phase 3.9 - pehle ye hardcoded `false` tha, koi env var
+  # override nahi tha (prod ke ${CONTROL_CENTER_AI_ENABLED:false} ke
+  # ulat), isliye real E2E run ke liye AI on karne ka backward-compatible
+  # tareeka nahi tha bina is file ko edit kiye. Default abhi bhi OFF hai.
+  ai:
+    enabled: ${CONTROL_CENTER_AI_ENABLED:false}

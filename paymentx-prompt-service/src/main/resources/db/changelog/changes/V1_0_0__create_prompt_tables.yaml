@@ -1,0 +1,177 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_0-create-prompt-template-table
+      author: prompt-service
+      comment: >
+        The stable identity (promptKey, name, type) a versioned prompt
+        attaches to - no status column here on purpose, see
+        PromptTemplate entity javadoc: a template's "is it usable"
+        state is entirely derived from whether it has an ACTIVE
+        version, tracked on prompt_version instead, to avoid two
+        independently-updatable status fields drifting out of sync.
+      changes:
+        - createTable:
+            tableName: prompt_template
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: prompt_key
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_prompt_template_prompt_key
+              - column:
+                  name: name
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(1024)
+              - column:
+                  name: type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - sql:
+            sql: >
+              ALTER TABLE prompt_template ADD CONSTRAINT chk_prompt_template_type
+              CHECK (type IN ('SYSTEM', 'USER', 'TOOL', 'RAG'));
+
+  - changeSet:
+      id: V1_0_1-create-prompt-version-table
+      author: prompt-service
+      comment: >
+        One content-immutable version of a prompt template, plus the
+        variable declarations its {{placeholders}} may reference
+        (stored as native jsonb, see PromptVersion entity javadoc for
+        why this is not a separate prompt_variable table). The partial
+        unique index below is the real, database-level enforcement of
+        "at most one ACTIVE version per prompt" (Step 20/21 of the
+        Phase 3.2 brief: a database constraint, not just application
+        code, must prevent two concurrent activate requests from both
+        succeeding) - Postgres has no declarative "unique per group
+        with a WHERE condition" via Liquibase's createIndex change type
+        in this version, so it is expressed as raw SQL, the same
+        mechanism V1_0_0__create_routing_rule_table.yaml already uses
+        for its own CHECK constraint.
+      changes:
+        - createTable:
+            tableName: prompt_version
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: prompt_template_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_prompt_version_template
+                    references: prompt_template(id)
+              - column:
+                  name: version_number
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: content
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: variables
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: prompt_version
+            columnNames: prompt_template_id, version_number
+            constraintName: uq_prompt_version_template_version
+        - createIndex:
+            indexName: idx_prompt_version_template_id
+            tableName: prompt_version
+            columns:
+              - column:
+                  name: prompt_template_id
+        - sql:
+            sql: >
+              ALTER TABLE prompt_version ADD CONSTRAINT chk_prompt_version_status
+              CHECK (status IN ('DRAFT', 'ACTIVE', 'INACTIVE', 'ARCHIVED'));
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_prompt_version_one_active_per_template
+              ON prompt_version (prompt_template_id)
+              WHERE status = 'ACTIVE';

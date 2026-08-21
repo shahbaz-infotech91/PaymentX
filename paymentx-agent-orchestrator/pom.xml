@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paymentx</groupId>
+        <artifactId>paymentx-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>paymentx-agent-orchestrator</artifactId>
+    <packaging>jar</packaging>
+
+    <name>PaymentX Agent Orchestrator</name>
+    <description>
+        AI Platform - Phase 3.8. The single agent loop that ties RAG
+        Service, MCP Gateway, and LLM Service together behind a bounded,
+        auditable state machine: classify/plan (LLM, structured JSON
+        decision) -&gt; retrieve (RAG Service) and/or call a tool (real MCP
+        client against MCP Gateway) -&gt; evaluate -&gt; generate a final,
+        source-cited, evidence-backed answer. Owns zero database (bounded
+        per-request execution state only, no cross-request memory). Read-
+        only tools only - a hardcoded, code-enforced AgentToolPolicy
+        allow-list denies every write-shaped tool regardless of what the
+        LLM requests or what MCP Gateway might expose in the future. No
+        Multi-Agent, no long-term memory, no autonomous financial
+        actions, no human-approval workflow - see
+        PAYMENTX_PHASE_3_8_AGENT_ORCHESTRATOR.md.
+    </description>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>com.paymentx</groupId>
+            <artifactId>paymentx-common-library</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+
+        <!-- REQUIRED for @CircuitBreaker/@Retry to actually intercept a method call at runtime - a real,
+             previously-undocumented gap found and fixed in LLM/Embedding/RAG Service during Phase 3.6 (see
+             PAYMENTX_PHASE_3_6_RAG_SERVICE.md's Known Limitations / Retry sections). Added here proactively
+             from day one, same as paymentx-mcp-gateway did in Phase 3.7. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- The official MCP Java SDK, used here as a CLIENT (not a server, unlike paymentx-mcp-gateway) -
+             Agent Orchestrator is a real MCP client connecting to MCP Gateway's real Streamable HTTP /mcp
+             endpoint (Step 6/25 - all tool access must go through the real MCP protocol, never a REST
+             shortcut to MCP Gateway's internal registry). Same version, verified live the same way in
+             Phase 3.7 (see that module's pom.xml comment). -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp</artifactId>
+            <version>0.18.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Already an established test dependency in this platform (paymentx-rag-service,
+             paymentx-mcp-gateway, etc.) - reused here to test each downstream client (RagServiceClient/
+             LlmServiceClient/PromptServiceClient) at the real wire level, and to stand in for the real
+             business-service APIs MCP Gateway itself would call in the real end-to-end test. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.13.2</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

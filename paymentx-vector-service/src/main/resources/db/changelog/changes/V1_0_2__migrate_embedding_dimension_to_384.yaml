@@ -1,0 +1,121 @@
+# ====================================================================
+# ENGLISH
+# --------------------------------------------------------------------
+# PHASE 3.5 VECTOR DATABASE MIGRATION. What this file does: migrates
+# `ai_document_embedding.embedding` from pgvector's `vector(1536)` (the
+# fixed dimension of OpenAI's text-embedding-3-small, Phase 3.4's
+# original provider) to `vector(384)` (the fixed, real output
+# dimension of sentence-transformers/all-MiniLM-L6-v2, the local model
+# Phase 3.4's migration made the default - see
+# PAYMENTX_PHASE_3_4_LOCAL_EMBEDDING.md). Why it exists: pgvector's
+# `vector(N)` is a fixed-width type - a 384-dimension local embedding
+# cannot be inserted into a `vector(1536)` column at all (this was
+# confirmed for real in Phase 3.4/3.9 as a live 503
+# VECTOR_DIMENSION_MISMATCH). How it connects to Vector DB: this is
+# the one real schema change AiDocumentEmbedding.DIMENSION and
+# VectorProperties.dimension (both changed to 384 in this same phase)
+# depend on to actually match the live database.
+#
+# SAFETY: this changeset is guarded by a real Liquibase precondition
+# that fails loudly (onFail: MARK_RAN is NOT used - default is
+# HALT) if `ai_document_embedding` contains any row when it runs,
+# rather than silently dropping/truncating real data via the
+# DROP COLUMN below. Confirmed empty for real before writing this
+# migration (`SELECT count(*) FROM ai_document_embedding` = 0, both in
+# Phase 3.4's and Phase 3.9's real validation) - there is nothing to
+# re-embed on this environment. If this ever runs against a database
+# that DOES have rows, it stops before touching anything, and an
+# operator must re-embed those chunks via the real Embedding Service
+# (Local provider) and re-store them through the normal
+# POST /api/v1/vector/documents path before this migration can safely
+# proceed - see PAYMENTX_PHASE_3_5_VECTOR_DATABASE_MIGRATION.md's
+# rollback/re-index section.
+#
+# DROP COLUMN + ADD COLUMN, not ALTER COLUMN ... TYPE: pgvector does
+# not define an implicit cast between two different fixed vector
+# dimensions (1536 -> 384 is a genuine dimension change, not a
+# widening/narrowing of the same type) - there is no meaningful way to
+# "convert" a 1536-dimension vector into a 384-dimension one
+# mathematically (the brief explicitly forbids cropping/truncating
+# vector values), so the only honest schema operation on an empty
+# table is drop-and-recreate the column at the new width. The index
+# and CHECK constraint are dropped and recreated for the same reason -
+# both are defined against the old column/dimension and become
+# invalid once it changes.
+#
+# ====================================================================
+# HINGLISH
+# --------------------------------------------------------------------
+# PHASE 3.5 VECTOR DATABASE MIGRATION. Ye file kya karti hai:
+# `ai_document_embedding.embedding` ko pgvector ke `vector(1536)`
+# (OpenAI ke text-embedding-3-small ki fixed dimension, Phase 3.4 ka
+# original provider) se `vector(384)` (sentence-transformers/all-
+# MiniLM-L6-v2 ki fixed, real output dimension, wo local model jise
+# Phase 3.4 ki migration ne default banaya) me migrate karti hai. Ye
+# project me kyu hai: pgvector ka `vector(N)` ek fixed-width type hai -
+# ek 384-dimension local embedding `vector(1536)` column me insert ho
+# hi nahi sakta (Phase 3.4/3.9 me ek real live 503
+# VECTOR_DIMENSION_MISMATCH ke roop me confirm ho chuka hai). Vector DB
+# ke saath kaise connect hoti hai: yehi ek real schema change hai jispar
+# AiDocumentEmbedding.DIMENSION aur VectorProperties.dimension (dono is
+# phase me 384 par badle gaye) depend karte hain taaki live database se
+# actually match karein.
+#
+# SAFETY: ye changeset ek real Liquibase precondition se guarded hai jo
+# loudly fail hota hai (onFail: MARK_RAN use NAHI hua - default HALT
+# hai) agar `ai_document_embedding` me is ke chalne ke waqt koi bhi row
+# ho, neeche wale DROP COLUMN se real data silently drop/truncate hone
+# ke bajaye. Ye is se pehle real me empty confirm kiya gaya
+# (`SELECT count(*) FROM ai_document_embedding` = 0, Phase 3.4 aur
+# Phase 3.9 dono ki real validation me) - is environment par re-embed
+# karne layak kuch hai hi nahi. Agar ye kabhi ek aisi database ke
+# against chale jisme rows HON, ye kuch bhi chhune se pehle ruk jaata
+# hai, aur ek operator ko un chunks ko real Embedding Service (Local
+# provider) se re-embed karke normal POST /api/v1/vector/documents path
+# se dobara store karna hoga is migration ke safely proceed karne se
+# pehle.
+# ====================================================================
+
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_2-migrate-embedding-dimension-to-384
+      author: vector-service
+      comment: >
+        Phase 3.5 - migrates ai_document_embedding.embedding from vector(1536)
+        (OpenAI text-embedding-3-small) to vector(384) (local
+        sentence-transformers/all-MiniLM-L6-v2, Phase 3.4's new default).
+        Guarded by a precondition that halts if any row already exists -
+        confirmed empty (0 rows) before this migration was written.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: SELECT COUNT(*) FROM ai_document_embedding
+      changes:
+        - sql:
+            sql: DROP INDEX idx_ai_document_embedding_vector_hnsw;
+        - sql:
+            sql: ALTER TABLE ai_document_embedding DROP CONSTRAINT chk_ai_document_embedding_dimension;
+        - dropColumn:
+            tableName: ai_document_embedding
+            columnName: embedding
+        - addColumn:
+            tableName: ai_document_embedding
+            columns:
+              - column:
+                  name: embedding
+                  type: vector(384)
+                  constraints:
+                    nullable: false
+        - sql:
+            sql: >
+              ALTER TABLE ai_document_embedding ADD CONSTRAINT chk_ai_document_embedding_dimension
+              CHECK (dimension = 384);
+        - sql:
+            comment: >
+              Same HNSW/vector_cosine_ops choice as the original V1_0_1 migration
+              (see PAYMENTX_PHASE_3_5_VECTOR_DATABASE.md §10) - only the vector
+              width changed, not the index strategy or distance operator.
+            sql: >
+              CREATE INDEX idx_ai_document_embedding_vector_hnsw ON ai_document_embedding
+              USING hnsw (embedding vector_cosine_ops);
