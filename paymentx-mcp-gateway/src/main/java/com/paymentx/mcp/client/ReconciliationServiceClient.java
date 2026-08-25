@@ -88,6 +88,19 @@ public class ReconciliationServiceClient {
         return get("/api/v1/reconciliation/batches/" + batchId + "/summary", correlationId);
     }
 
+    // Phase 4.6.0 - the paymentReference -> batchId bridge (GET /api/v1/reconciliation/records,
+    // added this phase to reconciliation-service). A real "no reconciliation record for this
+    // reference" is a valid, non-empty-but-empty-array business result (never reconciled, or not
+    // yet reconciled) - the generic get() helper below only treats a MISSING/NULL data node as
+    // unavailable, so an empty JSON array is returned as Optional.of(emptyArrayNode), matching
+    // getBatchStatus/getSummary's own "404 is a business result, not an error" convention.
+    @CircuitBreaker(name = "reconciliationService")
+    @Retry(name = "reconciliationService")
+    public Optional<JsonNode> getRecordsByReference(String paymentReference, String correlationId) {
+        return get("/api/v1/reconciliation/records?paymentReference="
+                + java.net.URLEncoder.encode(paymentReference, java.nio.charset.StandardCharsets.UTF_8), correlationId);
+    }
+
     private Optional<JsonNode> get(String path, String correlationId) {
         HttpHeaders headers = new HttpHeaders();
         if (correlationId != null) {

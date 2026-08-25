@@ -3,8 +3,8 @@ package com.paymentx.agent.state;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * English:
@@ -71,23 +71,61 @@ public class AgentExecution {
     private final String traceId;
     private final String userId;
     private final String userQuery;
+    // Phase 4.1 - logical agent identity this execution is running as, resolved by
+    // registry.AgentRegistry before the run starts. Deliberately distinct from userId
+    // (authenticated human identity), and never a participantId/paymentId.
+    private final String agentId;
 
     private AgentState currentStep = AgentState.RECEIVED;
     private int iteration = 0;
     private int toolCallCount = 0;
 
-    private final List<RagRetrievalRecord> retrievedContext = new ArrayList<>();
-    private final List<ToolCallRecord> toolCalls = new ArrayList<>();
+    // orchestrator/AgentOrchestratorService.execute() runs runLoop() on a background executor
+    // thread and bounds it with future.get(timeout, ...); on a genuine timeout the caller thread
+    // proceeds to read this execution (audit write, response building) while the background
+    // thread may still be running (best-effort future.cancel(true) does not guarantee immediate
+    // stop for a thread blocked in a blocking HTTP call) - a plain ArrayList's iterator throws
+    // ConcurrentModificationException under that real concurrent add-while-iterate race, which
+    // would otherwise cause AgentAuditClient.recordAgentRun to silently fail (its own catch-all
+    // swallows the exception) and the execution to vanish from Execution History. CopyOnWriteArrayList
+    // has snapshot iterators that never throw CME, closing that race without changing any
+    // existing behavior for the single-threaded-read common case.
+    private final List<RagRetrievalRecord> retrievedContext = new CopyOnWriteArrayList<>();
+    private final List<ToolCallRecord> toolCalls = new CopyOnWriteArrayList<>();
 
     private AgentState status;
     private String finalAnswer;
 
-    public AgentExecution(String requestId, String correlationId, String traceId, String userId, String userQuery) {
+    // Phase 4.7 - mutable (not a constructor param, to avoid touching AgentAuditClientTest's/
+    // AgentPlannerTest's existing direct construction sites) rather than folded only into
+    // userQuery's own "Payment reference: X. <question>" text (Phase 4.2.3's effectiveUserQuery),
+    // so Control Center's AI Agent Control Center execution history can filter/display it as its
+    // own structured field. Purely descriptive - never re-derives or overrides tool arguments.
+    private String paymentReference;
+
+    // Phase 5 - LLM provider/fallback visibility (LlmProviderRouter, Phase 4.8.6). Mutable, same
+    // pattern as paymentReference above (avoids touching existing constructor call sites).
+    // lastLlmProvider/lastFallbackReason reflect the MOST RECENT real LLM call this execution
+    // made (the planning loop calls the LLM once per iteration; the last call is the one whose
+    // answer - including a FINAL_RESPONSE - the caller actually sees). fallbackUsedInExecution is
+    // a whole-execution OR across every call: true if ANY call during this run used the fallback
+    // provider, even if a later call succeeded on primary again - an operator investigating a
+    // slow/unusual execution should see that fallback was involved at all, not just at the end.
+    private String lastLlmProvider;
+    private boolean fallbackUsedInExecution;
+    private String lastFallbackReason;
+
+    public AgentExecution(String requestId, String correlationId, String traceId, String userId, String userQuery, String agentId) {
         this.requestId = requestId;
         this.correlationId = correlationId;
         this.traceId = traceId;
         this.userId = userId;
         this.userQuery = userQuery;
+        this.agentId = agentId;
+    }
+
+    public AgentExecution(String requestId, String correlationId, String traceId, String userId, String userQuery) {
+        this(requestId, correlationId, traceId, userId, userQuery, null);
     }
 
     public void addRagRetrieval(RagRetrievalRecord record) {

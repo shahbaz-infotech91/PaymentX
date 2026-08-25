@@ -63,6 +63,8 @@ public final class ToolPermissions {
     public static final String ROUTING_READ = "ROUTING_READ";
     public static final String RECONCILIATION_READ = "RECONCILIATION_READ";
     public static final String AUDIT_READ = "AUDIT_READ";
+    /** Phase 4.4 - backs database.statistics, wired to Control Center's existing read-only Postgres API. */
+    public static final String DATABASE_READ = "DATABASE_READ";
 
     /** Declared per Step 13's own instruction; never checked, never granted - see class javadoc. */
     public static final String PAYMENT_RETRY = "PAYMENT_RETRY";

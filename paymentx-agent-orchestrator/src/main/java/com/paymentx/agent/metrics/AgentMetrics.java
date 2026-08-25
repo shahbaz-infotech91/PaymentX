@@ -57,6 +57,20 @@ public class AgentMetrics {
     private static final String EXECUTION_LATENCY_TIMER = "agent_execution_latency";
     private static final String TOOL_LATENCY_TIMER = "agent_tool_latency";
     private static final String CONTEXT_SIZE_SUMMARY = "agent_context_size";
+    // Phase 4.1 - agentId comes exclusively from registry.AgentDefinition.agentId(), a small,
+    // bounded, configured set of values (never raw user input/userQuery text), so it is safe to
+    // use as a Micrometer tag - unbounded cardinality from user-generated values is never tagged
+    // anywhere in this class.
+    private static final String PLAN_REJECTED_COUNTER = "agent_plan_rejected_total";
+    // Phase 4.2.2 - distinct from RAG Service's own rag_insufficient_context_total (RagMetrics,
+    // paymentx-rag-service): that meter fires whenever a SINGLE RAG retrieval finds nothing above
+    // the relevance threshold, a normal, expected outcome of one RETRIEVE_KNOWLEDGE step this
+    // agent may legitimately continue past. THIS meter fires only when the agent's OWN bounded
+    // loop concludes with status=INSUFFICIENT_CONTEXT - i.e. the agent reached FINAL_RESPONSE
+    // having attempted at least one tool/RAG call and had NONE of them succeed (see
+    // AgentOrchestratorService.finalizeAnswer) - "the agent determined available evidence was
+    // insufficient to support a conclusion", never merely "one RAG call returned zero chunks".
+    private static final String INSUFFICIENT_CONTEXT_COUNTER = "agent_insufficient_context_total";
 
     private final MeterRegistry meterRegistry;
 
@@ -64,32 +78,51 @@ public class AgentMetrics {
         this.meterRegistry = meterRegistry;
     }
 
-    public void recordRequest() {
-        Counter.builder(REQUESTS_COUNTER).register(meterRegistry).increment();
+    public void recordRequest(String agentId) {
+        Counter.builder(REQUESTS_COUNTER).tag("agent", safeTag(agentId)).register(meterRegistry).increment();
     }
 
-    public void recordSuccess() {
-        Counter.builder(SUCCESS_COUNTER).register(meterRegistry).increment();
+    public void recordSuccess(String agentId) {
+        Counter.builder(SUCCESS_COUNTER).tag("agent", safeTag(agentId)).register(meterRegistry).increment();
     }
 
-    public void recordFailure(String status) {
-        Counter.builder(FAILURE_COUNTER).tag("status", status).register(meterRegistry).increment();
+    public void recordFailure(String agentId, String status) {
+        Counter.builder(FAILURE_COUNTER).tag("agent", safeTag(agentId)).tag("status", status).register(meterRegistry).increment();
     }
 
-    public void recordTimeout() {
-        Counter.builder(TIMEOUT_COUNTER).register(meterRegistry).increment();
+    public void recordTimeout(String agentId) {
+        Counter.builder(TIMEOUT_COUNTER).tag("agent", safeTag(agentId)).register(meterRegistry).increment();
     }
 
     public void recordIteration() {
         Counter.builder(ITERATIONS_COUNTER).register(meterRegistry).increment();
     }
 
-    public void recordToolCall(String toolName) {
-        Counter.builder(TOOL_CALLS_COUNTER).tag("tool", toolName).register(meterRegistry).increment();
+    public void recordToolCall(String agentId, String toolName) {
+        Counter.builder(TOOL_CALLS_COUNTER).tag("agent", safeTag(agentId)).tag("tool", toolName).register(meterRegistry).increment();
     }
 
-    public void recordToolDenied(String toolName) {
-        Counter.builder(TOOL_DENIED_COUNTER).tag("tool", toolName == null ? "unknown" : toolName).register(meterRegistry).increment();
+    public void recordToolDenied(String agentId, String toolName) {
+        Counter.builder(TOOL_DENIED_COUNTER).tag("agent", safeTag(agentId)).tag("tool", safeTag(toolName)).register(meterRegistry).increment();
+    }
+
+    /** Fired when planning/AgentPlanValidator rejects a plan - distinguishes "the model proposed
+     * something invalid or unauthorized" from other failure causes (a downstream outage, a
+     * timeout). {@code reason} is always one of AgentErrorCodes' fixed constants, never
+     * free-text, so cardinality stays bounded. */
+    public void recordPlanRejected(String agentId, String reason) {
+        Counter.builder(PLAN_REJECTED_COUNTER).tag("agent", safeTag(agentId)).tag("reason", safeTag(reason)).register(meterRegistry).increment();
+    }
+
+    /** Fired at most once per run when the agent's own outcome concludes
+     * AgentState.INSUFFICIENT_CONTEXT - never for a single RAG/tool call's own failure (those are
+     * agent_tool_calls_total/agent_rag_calls_total's concern). Reached from two places:
+     * AgentOrchestratorService.finalizeAnswer (a normal FINAL_RESPONSE with attempted-but-
+     * unsuccessful evidence), and (Phase 5.x) applyPlanningFailure when a later planning-stage
+     * failure follows evidence that had already succeeded - a truthful partial outcome, not a
+     * downstream-failure metric in its own right. */
+    public void recordInsufficientContext(String agentId) {
+        Counter.builder(INSUFFICIENT_CONTEXT_COUNTER).tag("agent", safeTag(agentId)).register(meterRegistry).increment();
     }
 
     public void recordRagCall() {
@@ -108,8 +141,12 @@ public class AgentMetrics {
         return Timer.start(meterRegistry);
     }
 
-    public void stopExecutionTimer(Timer.Sample sample) {
-        sample.stop(Timer.builder(EXECUTION_LATENCY_TIMER).publishPercentileHistogram().register(meterRegistry));
+    public void stopExecutionTimer(Timer.Sample sample, String agentId) {
+        sample.stop(Timer.builder(EXECUTION_LATENCY_TIMER).tag("agent", safeTag(agentId)).publishPercentileHistogram().register(meterRegistry));
+    }
+
+    private String safeTag(String value) {
+        return value == null || value.isBlank() ? "unknown" : value;
     }
 
     public void stopToolTimer(Timer.Sample sample, String toolName) {

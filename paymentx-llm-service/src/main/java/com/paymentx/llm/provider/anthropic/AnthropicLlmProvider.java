@@ -115,6 +115,15 @@ import java.util.stream.Collectors;
  * ek aur sirf ek class jo kabhi ek LLM ko outbound network call karti
  * hai.
  */
+// Phase 4.8.4: registered alongside GeminiLlmProvider (both implement LlmProvider). Phase 4.8.6
+// removed the @ConditionalOnProperty mutual exclusion this class previously had - the new
+// provider.LlmProviderRouter (the ONE bean actually injected into LlmServiceImpl, marked
+// @Primary) needs BOTH concrete providers present simultaneously so it can call whichever one
+// (primary or fallback) a given request needs; the router is the sole class that ever resolves
+// which of these two beans to call, by matching providerName() against configuration. This
+// class's own generate() is unaffected either way - unconfigured/unselected is still exactly as
+// safe as before (generate() itself throws LlmException.notConfigured() if apiKey is blank,
+// regardless of whether this provider is ever actually selected by the router).
 @Component
 @Slf4j
 public class AnthropicLlmProvider implements LlmProvider {
@@ -146,9 +155,13 @@ public class AnthropicLlmProvider implements LlmProvider {
         return PROVIDER_NAME;
     }
 
+    // Phase 4.8.6 - own, per-provider circuit-breaker/retry instance name (was the shared
+    // "llmProvider" name both providers used when only one was ever an active bean at a time; now
+    // that LlmProviderRouter can call either concurrently, sharing one instance would incorrectly
+    // let Gemini's failures trip the breaker guarding Anthropic calls, and vice versa).
     @Override
-    @CircuitBreaker(name = "llmProvider")
-    @Retry(name = "llmProvider")
+    @CircuitBreaker(name = "llmProvider-anthropic")
+    @Retry(name = "llmProvider-anthropic")
     public LlmProviderResult generate(LlmProviderRequest request) {
         LlmProperties.Anthropic config = properties.getAnthropic();
         if (config.getApiKey() == null || config.getApiKey().isBlank()) {

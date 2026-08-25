@@ -81,6 +81,10 @@ public class LlmException extends PaymentXException {
         return new LlmException(LlmErrorCodes.LLM_RATE_LIMITED, message, true, HttpStatus.TOO_MANY_REQUESTS);
     }
 
+    public static LlmException localRateLimited(String message) {
+        return new LlmException(LlmErrorCodes.LLM_LOCAL_RATE_LIMITED, message, true, HttpStatus.TOO_MANY_REQUESTS);
+    }
+
     public static LlmException providerUnavailable(String message) {
         return new LlmException(LlmErrorCodes.LLM_PROVIDER_UNAVAILABLE, message, true, HttpStatus.BAD_GATEWAY);
     }

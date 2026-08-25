@@ -30,3 +30,29 @@ management:
 logging:
   level:
     org.springframework: INFO
+
+# Phase 4.8.4 - Gemini is the active provider for local/dev testing (the
+# Anthropic account backing LLM_API_KEY in this environment is billing-
+# blocked; GEMINI_API_KEY is configured instead). Overridable per-run via
+# LLM_PROVIDER without editing this file - this is a dev-profile default,
+# not a hardcoded-away Anthropic removal (application.yml's own
+# `${LLM_PROVIDER:anthropic}` default, and application-prod.yml, are both
+# untouched, so prod still defaults to Anthropic).
+#
+# Phase 5 (Multi-Provider LLM Resilience Expansion) - `fallback-providers` set to a real 3-hop
+# dev chain (groq, then anthropic, then openai), reordered/extended from the prior 2-hop
+# (anthropic, groq) chain to match this phase's explicit desired priority: Gemini (primary) ->
+# Groq -> Anthropic -> OpenAI. Groq is now tried BEFORE Anthropic (was the other way round) since
+# this environment's Anthropic account remains billing-blocked (see the note above) while Groq's
+# free tier (~14,400 requests/day, no credit card) is genuinely reachable - trying Anthropic first
+# would waste a hop on a provider already known to fail here. OpenAI is deliberately LAST: it is
+# the only provider in this chain that draws down a real, funded, non-free credit balance, so it
+# must only ever be reached once Gemini, Groq, AND Anthropic have all genuinely failed with a
+# retryable error - see PAYMENTX_PHASE_5_MULTI_PROVIDER_LLM_RESILIENCE.md for the full rationale
+# and cost-protection notes. Prod's own default (application.yml's
+# `${LLM_FALLBACK_PROVIDERS:anthropic}`, no Groq/OpenAI) is untouched - this override is
+# dev-profile only, same convention `provider` above already established.
+llm:
+  provider: ${LLM_PROVIDER:gemini}
+  routing:
+    fallback-providers: ${LLM_FALLBACK_PROVIDERS:groq,anthropic,openai}

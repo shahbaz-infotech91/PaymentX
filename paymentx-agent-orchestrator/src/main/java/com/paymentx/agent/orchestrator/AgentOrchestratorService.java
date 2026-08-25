@@ -3,6 +3,8 @@ package com.paymentx.agent.orchestrator;
 import com.paymentx.agent.audit.AgentAuditClient;
 import com.paymentx.agent.client.LlmServiceClient;
 import com.paymentx.agent.client.McpToolClient;
+import com.paymentx.agent.client.PaymentScheme;
+import com.paymentx.agent.client.RagQueryFilters;
 import com.paymentx.agent.client.RagServiceClient;
 import com.paymentx.agent.config.AgentOrchestratorProperties;
 import com.paymentx.agent.dto.AgentExecuteRequest;
@@ -16,6 +18,7 @@ import com.paymentx.agent.exception.AgentErrorCodes;
 import com.paymentx.agent.exception.AgentException;
 import com.paymentx.agent.planning.AgentPlanValidator;
 import com.paymentx.agent.planning.AgentPlanner;
+import com.paymentx.agent.registry.AgentDefinition;
 import com.paymentx.agent.state.AgentExecution;
 import com.paymentx.agent.state.AgentPlan;
 import com.paymentx.agent.state.AgentState;
@@ -38,10 +41,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -55,7 +58,7 @@ import java.util.concurrent.TimeoutException;
  * MAX_ITERATIONS/TIMEOUT/FAILED) - never an unbounded `while(true)`
  * (Step 11's explicit prohibition): the loop condition checks
  * iteration &lt; maxIterations on every pass, and the ENTIRE loop is
- * additionally wrapped in a bounded CompletableFuture.get(overallTimeoutMs,
+ * additionally wrapped in a bounded ExecutorService Future.get(overallTimeoutMs,
  * ...) (Step 33 - the same bounded-execution pattern MCP Gateway's own
  * ToolInvoker already established in Phase 3.7, reused here rather than
  * inventing a second mechanism).
@@ -88,7 +91,11 @@ import java.util.concurrent.TimeoutException;
  * failure (Prompt/LLM Service unreachable, the LLM's response could not
  * be parsed/validated, or the LLM itself refused) cannot be recovered
  * from within the loop at all (there is no way to decide a next step
- * without a real plan) and ends the run immediately as FAILED/REFUSED.
+ * without a real plan) and ends the run immediately - FAILED/REFUSED,
+ * unless real tool/RAG evidence had already succeeded in an earlier
+ * iteration, in which case the run instead ends INSUFFICIENT_CONTEXT
+ * with a truthful partial answer built from that evidence (Phase 5.x -
+ * see applyPlanningFailure) rather than discarding it.
  * SUCCESS vs INSUFFICIENT_CONTEXT at FINAL_RESPONSE time is decided
  * honestly from what was actually gathered (Step 16/18): if RAG/tool
  * evidence was attempted at all but NONE of it succeeded, the run is
@@ -115,7 +122,7 @@ import java.util.concurrent.TimeoutException;
  * tak nahi pahunch jaata - kabhi ek unbounded `while(true)` nahi (Step
  * 11 ka explicit prohibition): loop condition har pass par iteration
  * &lt; maxIterations check karta hai, aur POORA loop additionally ek
- * bounded CompletableFuture.get(overallTimeoutMs, ...) me wrapped hai
+ * bounded ExecutorService Future.get(overallTimeoutMs, ...) me wrapped hai
  * (Step 33 - wahi bounded-execution pattern jo MCP Gateway ka apna
  * ToolInvoker Phase 3.7 me already establish kar chuka hai, yahan reuse
  * kiya gaya, ek doosra mechanism invent karne ke bajaye).
@@ -206,21 +213,36 @@ public class AgentOrchestratorService {
                 .build();
     }
 
-    public AgentExecuteResponse execute(AgentExecuteRequest request, String correlationId, String traceId) {
+    public AgentExecuteResponse execute(AgentExecuteRequest request, AgentDefinition definition, String correlationId, String traceId) {
         String requestId = java.util.UUID.randomUUID().toString();
-        AgentExecution execution = new AgentExecution(requestId, correlationId, traceId, request.userId(), request.userQuery());
+        AgentExecution execution = new AgentExecution(
+                requestId, correlationId, traceId, request.userId(), effectiveUserQuery(request), definition.agentId());
+        execution.setPaymentReference(request.paymentReference());
 
-        metrics.recordRequest();
+        metrics.recordRequest(definition.agentId());
         Timer.Sample overallTimer = metrics.startTimer();
         long startTime = System.currentTimeMillis();
         McpToolClient.setCorrelationId(correlationId);
 
+        long totalLatencyMs = 0;
+        // Deliberately executor.submit(...) (a real java.util.concurrent.Future), not
+        // CompletableFuture.runAsync(...): CompletableFuture.cancel(true)'s own javadoc states the
+        // mayInterruptIfRunning flag "has no effect in this implementation" - it marks the future
+        // cancelled but never calls Thread.interrupt() on the task actually running it, so the
+        // background runLoop() would keep executing (and could keep making real LLM/MCP calls,
+        // burning scarce quota invisibly) after the caller was already told TIMEOUT. A real
+        // ExecutorService Future's cancel(true) does interrupt the worker thread.
+        Future<?> future = executor.submit(() -> runLoop(execution, definition));
         try {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> runLoop(execution), executor);
-            future.get(properties.getOverallTimeoutMs(), TimeUnit.MILLISECONDS);
+            future.get(effectiveTimeoutMs(definition), TimeUnit.MILLISECONDS);
         } catch (TimeoutException timedOut) {
             execution.setStatus(AgentState.TIMEOUT);
-            metrics.recordTimeout();
+            metrics.recordTimeout(definition.agentId());
+            // Best-effort: a thread blocked in a plain blocking HTTP call does not always observe
+            // the interrupt immediately, but it stops the loop as soon as the running call next
+            // checks its interrupted status, and this class's own CopyOnWriteArrayList fields
+            // ensure that any residual race window never corrupts the audit/response read below.
+            future.cancel(true);
         } catch (ExecutionException wrapped) {
             log.error("Unexpected agent execution failure requestId={}", requestId, wrapped.getCause());
             execution.setStatus(AgentState.FAILED);
@@ -229,19 +251,45 @@ public class AgentOrchestratorService {
             execution.setStatus(AgentState.FAILED);
         } finally {
             McpToolClient.clearCorrelationId();
-            metrics.stopExecutionTimer(overallTimer);
-            auditClient.recordAgentRun(execution);
+            metrics.stopExecutionTimer(overallTimer, definition.agentId());
+            // Phase 4.2.3 item 19 - latency is now known before the audit write, closing the gap
+            // Phase 4.1's own design doc already flagged (PAYMENTX_PHASE_4_1_AGENT_FOUNDATION.md
+            // §11): "not currently in the agent-run payload... worth adding, cheap addition."
+            totalLatencyMs = System.currentTimeMillis() - startTime;
+            auditClient.recordAgentRun(execution, totalLatencyMs);
         }
 
-        long totalLatencyMs = System.currentTimeMillis() - startTime;
         return buildResponse(execution, totalLatencyMs);
     }
 
-    private void runLoop(AgentExecution execution) {
+    // Phase 4.2.3 - grounds the investigation directly when a caller supplies paymentReference
+    // (see dto.AgentExecuteRequest's own javadoc), rather than relying solely on the planning
+    // LLM to extract one from free text. Purely a text-composition step - it does not change
+    // agent identity, tool access, or any bounded-execution limit, and when paymentReference is
+    // absent this returns request.userQuery() completely unchanged (byte-identical to every
+    // pre-Phase-4.2.3 call).
+    private String effectiveUserQuery(AgentExecuteRequest request) {
+        if (request.paymentReference() == null || request.paymentReference().isBlank()) {
+            return request.userQuery();
+        }
+        return "Payment reference: " + request.paymentReference() + ". " + request.userQuery();
+    }
+
+    // Phase 4.1 - an AgentDefinition's own maxIterations/timeoutMs override the platform default
+    // when set; both remain trusted, resolved values that a plan/LLM output can never influence.
+    private int effectiveMaxIterations(AgentDefinition definition) {
+        return definition.maxIterations() != null ? definition.maxIterations() : properties.getMaxIterations();
+    }
+
+    private long effectiveTimeoutMs(AgentDefinition definition) {
+        return definition.timeoutMs() != null ? definition.timeoutMs() : properties.getOverallTimeoutMs();
+    }
+
+    private void runLoop(AgentExecution execution, AgentDefinition definition) {
         execution.setCurrentStep(AgentState.RECEIVED);
 
         while (true) {
-            if (execution.getIteration() >= properties.getMaxIterations()) {
+            if (execution.getIteration() >= effectiveMaxIterations(definition)) {
                 execution.setStatus(AgentState.MAX_ITERATIONS);
                 return;
             }
@@ -265,42 +313,124 @@ public class AgentOrchestratorService {
                 discoveredTools = List.of();
             }
 
-            AgentPlan plan;
+            AgentPlan plan = null;
             try {
                 metrics.recordLlmCall();
-                plan = agentPlanner.plan(execution, execution.getCorrelationId());
-                planValidator.validate(plan, discoveredTools);
+                plan = agentPlanner.plan(execution, definition, execution.getCorrelationId());
+                planValidator.validate(plan, discoveredTools, definition);
             } catch (AgentException planFailure) {
-                applyPlanningFailure(execution, planFailure);
+                applyPlanningFailure(execution, definition, planFailure, plan);
                 return;
             }
 
             switch (plan.action()) {
-                case CALL_TOOL -> executeTool(execution, plan);
+                case CALL_TOOL -> executeTool(execution, definition, plan);
                 case RETRIEVE_KNOWLEDGE -> executeRetrieval(execution, plan);
                 case FINAL_RESPONSE -> {
                     execution.setCurrentStep(AgentState.GENERATING);
-                    finalizeAnswer(execution, plan);
+                    finalizeAnswer(execution, definition, plan);
                     return;
                 }
             }
         }
     }
 
-    private void applyPlanningFailure(AgentExecution execution, AgentException planFailure) {
-        AgentState status = switch (planFailure.getErrorCode()) {
-            case AgentErrorCodes.LLM_REFUSED -> AgentState.REFUSED;
-            case AgentErrorCodes.TOOL_NOT_ALLOWED -> AgentState.DENIED;
-            default -> AgentState.FAILED;
-        };
+    // Phase 5.x - a planning-stage infrastructure failure (LLM/Prompt Service unavailable, MCP
+    // tool discovery down, an unparseable/invalid LLM plan) used to collapse straight to FAILED
+    // regardless of what had already been gathered, silently discarding a genuine, already-
+    // SUCCEEDED tool/RAG result from an earlier iteration (e.g. a real payment.status SETTLED
+    // read, followed by a payment.lookup TOOL_TIMEOUT and then a broken next planning call) -
+    // see PAYMENTX_PHASE_5_PAYMENT_TEST_VALIDATION_AGENT.md's live E2E finding. When real
+    // evidence already succeeded, the honest outcome is a truthful partial answer
+    // (INSUFFICIENT_CONTEXT), never a blanket FAILED that hides evidence the caller already has a
+    // right to see. When nothing succeeded, FAILED remains the correct, unchanged outcome - this
+    // never upgrades a genuinely empty-handed run into a false partial success.
+    private void applyPlanningFailure(AgentExecution execution, AgentDefinition definition, AgentException planFailure, AgentPlan rejectedPlan) {
+        String errorCode = planFailure.getErrorCode();
+        AgentState status;
+        if (AgentErrorCodes.LLM_REFUSED.equals(errorCode)) {
+            status = AgentState.REFUSED;
+        } else if (AgentErrorCodes.TOOL_NOT_ALLOWED.equals(errorCode)) {
+            status = AgentState.DENIED;
+        } else if (anyToolOrRagSucceeded(execution)) {
+            status = AgentState.INSUFFICIENT_CONTEXT;
+            execution.setFinalAnswer(buildPartialAnswer(execution, planFailure));
+        } else {
+            status = AgentState.FAILED;
+        }
         execution.setStatus(status);
-        metrics.recordFailure(status.name());
-        log.warn("Agent planning failed requestId={} errorCode={} status={}", execution.getRequestId(), planFailure.getErrorCode(), status);
+
+        if (status == AgentState.INSUFFICIENT_CONTEXT) {
+            metrics.recordInsufficientContext(definition.agentId());
+        } else {
+            metrics.recordFailure(definition.agentId(), status.name());
+        }
+        if (AgentErrorCodes.PLAN_INVALID.equals(errorCode) || AgentErrorCodes.TOOL_NOT_ALLOWED.equals(errorCode)) {
+            metrics.recordPlanRejected(definition.agentId(), errorCode);
+        }
+        if (AgentErrorCodes.TOOL_NOT_ALLOWED.equals(errorCode)) {
+            metrics.recordToolDenied(definition.agentId(), rejectedPlan != null ? rejectedPlan.tool() : null);
+        }
+        log.warn("Agent planning failed requestId={} agentId={} errorCode={} status={}",
+                execution.getRequestId(), definition.agentId(), errorCode, status);
     }
 
-    private void executeTool(AgentExecution execution, AgentPlan plan) {
+    // Shared by finalizeAnswer (a normal FINAL_RESPONSE outcome) and applyPlanningFailure (a
+    // broken later iteration) - both need the same honest "did anything real actually succeed"
+    // check, never independently reimplemented.
+    private boolean anyToolOrRagSucceeded(AgentExecution execution) {
+        return execution.getToolCalls().stream().anyMatch(t -> "SUCCESS".equals(t.status()))
+                || execution.getRetrievedContext().stream().anyMatch(r -> "SUCCESS".equals(r.status()));
+    }
+
+    // Builds a truthful partial answer purely from already-gathered, already-sanitized evidence -
+    // deliberately never a new LLM call (the planning/LLM path is exactly what just failed, and
+    // calling it again here would either fail again or spend quota outside the caller's control).
+    // Successful evidence is reported verbatim; every non-SUCCESS tool/RAG entry is named
+    // explicitly (never hidden) along with its most specific known error, preferring the tool's
+    // own structured errorCode (e.g. TOOL_TIMEOUT) over the generic TOOL_EXECUTION_FAILED label
+    // when MCP Gateway's response carried one.
+    private String buildPartialAnswer(AgentExecution execution, AgentException planFailure) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("This request could not be fully completed, but the following evidence was already gathered:\n");
+        for (ToolCallRecord toolCall : execution.getToolCalls()) {
+            if ("SUCCESS".equals(toolCall.status())) {
+                sb.append("- ").append(toolCall.toolName()).append(": ").append(toolCall.result()).append('\n');
+            }
+        }
+        for (RagRetrievalRecord rag : execution.getRetrievedContext()) {
+            if ("SUCCESS".equals(rag.status())) {
+                sb.append("- Knowledge retrieval for \"").append(rag.query()).append("\": ").append(rag.answer()).append('\n');
+            }
+        }
+        sb.append("The following could not provide evidence:\n");
+        for (ToolCallRecord toolCall : execution.getToolCalls()) {
+            if (!"SUCCESS".equals(toolCall.status())) {
+                sb.append("- ").append(toolCall.toolName()).append(" (").append(toolFailureReason(toolCall)).append(")\n");
+            }
+        }
+        for (RagRetrievalRecord rag : execution.getRetrievedContext()) {
+            if (!"SUCCESS".equals(rag.status())) {
+                sb.append("- Knowledge retrieval for \"").append(rag.query()).append("\" (").append(rag.status()).append(")\n");
+            }
+        }
+        sb.append("Additionally, the assistant's own planning step could not complete (")
+                .append(planFailure.getErrorCode())
+                .append("), so no further investigation could be performed this run.");
+        return sb.toString();
+    }
+
+    private String toolFailureReason(ToolCallRecord toolCall) {
+        Object specificErrorCode = toolCall.result() != null ? toolCall.result().get("errorCode") : null;
+        if (specificErrorCode instanceof String specific && !specific.isBlank()) {
+            return specific;
+        }
+        return toolCall.errorCode() != null ? toolCall.errorCode() : toolCall.status();
+    }
+
+    private void executeTool(AgentExecution execution, AgentDefinition definition, AgentPlan plan) {
         execution.setCurrentStep(AgentState.TOOL_EXECUTION);
-        metrics.recordToolCall(plan.tool());
+        metrics.recordToolCall(definition.agentId(), plan.tool());
         Timer.Sample toolTimer = metrics.startTimer();
         long start = System.currentTimeMillis();
         try {
@@ -323,7 +453,8 @@ public class AgentOrchestratorService {
         execution.setCurrentStep(AgentState.RETRIEVING);
         metrics.recordRagCall();
         try {
-            RagServiceClient.RagQueryResult result = ragServiceClient.query(plan.ragQuery(), execution.getCorrelationId());
+            RagQueryFilters filters = deriveRagFilters(execution);
+            RagServiceClient.RagQueryResult result = ragServiceClient.query(plan.ragQuery(), filters, execution.getCorrelationId());
             List<String> sourceLabels = result.sources().stream().map(RagServiceClient.SourceRecord::source).toList();
             execution.addRagRetrieval(new RagRetrievalRecord(plan.ragQuery(), result.status(), result.answer(), sourceLabels));
         } catch (AgentException ragFailure) {
@@ -333,17 +464,54 @@ public class AgentOrchestratorService {
         }
     }
 
-    private void finalizeAnswer(AgentExecution execution, AgentPlan plan) {
+    // Phase 4.2.3 - derives RAG retrieval filters exclusively from real, already-gathered tool
+    // EVIDENCE in this execution - never from anything the plan/LLM itself asserts (plan has no
+    // filter field at all; see state.AgentPlan). Only `paymentScheme` is derived, and only from a
+    // real payment.lookup SUCCESS result's own `scheme` field - the one filter with a clean,
+    // lossless, unambiguous mapping from real tool output to a real client.PaymentScheme value.
+    // Deliberately does NOT attempt to derive errorCode/service/severity/retryable from evidence
+    // in this phase: failureReason is free text (see docs/ai/error-analyzer/payment-errors.md),
+    // and pattern-matching it into a specific errorCode would itself be a kind of fabrication -
+    // exactly what this phase's "do not fabricate filter values" instruction rules out. Applies
+    // to every agent's RETRIEVE_KNOWLEDGE step, not only error-analyzer's - harmless and never
+    // behavior-changing for an execution where no payment.lookup succeeded (filters stay empty,
+    // producing the exact same unfiltered request as before this phase).
+    private RagQueryFilters deriveRagFilters(AgentExecution execution) {
+        for (ToolCallRecord toolCall : execution.getToolCalls()) {
+            if ("payment.lookup".equals(toolCall.toolName()) && "SUCCESS".equals(toolCall.status())) {
+                Object rawScheme = toolCall.result() != null ? toolCall.result().get("scheme") : null;
+                if (rawScheme instanceof String schemeText) {
+                    try {
+                        PaymentScheme scheme = PaymentScheme.valueOf(schemeText);
+                        return new RagQueryFilters(null, null, scheme, null, null, null);
+                    } catch (IllegalArgumentException notARealScheme) {
+                        // Real payment.lookup only ever returns one of the three real schemes
+                        // (payment-service's own PaymentScheme enum) - an unrecognized value here
+                        // means don't filter, never guess/fabricate a scheme.
+                        return null;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private void finalizeAnswer(AgentExecution execution, AgentDefinition definition, AgentPlan plan) {
         execution.setFinalAnswer(plan.answer());
 
         boolean anyAttempted = !execution.getToolCalls().isEmpty() || !execution.getRetrievedContext().isEmpty();
-        boolean anySucceeded = execution.getToolCalls().stream().anyMatch(t -> "SUCCESS".equals(t.status()))
-                || execution.getRetrievedContext().stream().anyMatch(r -> "SUCCESS".equals(r.status()));
+        boolean anySucceeded = anyToolOrRagSucceeded(execution);
 
         AgentState status = (!anyAttempted || anySucceeded) ? AgentState.COMPLETED : AgentState.INSUFFICIENT_CONTEXT;
         execution.setStatus(status);
         if (status == AgentState.COMPLETED) {
-            metrics.recordSuccess();
+            metrics.recordSuccess(definition.agentId());
+        } else {
+            // Phase 4.2.2 - fired here specifically because this IS the point the agent's own
+            // outcome is determined (anyAttempted && !anySucceeded), not merely because some
+            // upstream call returned zero results - see AgentMetrics.recordInsufficientContext's
+            // own javadoc for the distinction from RAG Service's per-call metric.
+            metrics.recordInsufficientContext(definition.agentId());
         }
     }
 
@@ -371,7 +539,9 @@ public class AgentOrchestratorService {
 
         String answer = execution.getFinalAnswer() != null ? execution.getFinalAnswer() : honestFallbackAnswer(status);
 
-        return new AgentExecuteResponse(answer, status, sources, toolEvidence, executionMetadata);
+        return new AgentExecuteResponse(answer, status, sources, toolEvidence, executionMetadata,
+                execution.getRequestId(), execution.getCorrelationId(), execution.getAgentId(),
+                execution.getLastLlmProvider(), execution.isFallbackUsedInExecution(), execution.getLastFallbackReason());
     }
 
     private String honestFallbackAnswer(AgentResponseStatus status) {

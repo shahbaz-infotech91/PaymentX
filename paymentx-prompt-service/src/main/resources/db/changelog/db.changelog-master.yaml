@@ -37,3 +37,24 @@ databaseChangeLog:
 
   - include:
       file: db/changelog/changes/V1_0_3__seed_agent_orchestrator_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_4__seed_payment_error_analysis_v2_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_5__seed_payment_knowledge_assistant_agent_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_6__seed_payment_database_analysis_agent_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_7__seed_payment_fraud_risk_analysis_agent_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_8__seed_payment_reconciliation_analysis_agent_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_9__seed_payment_incident_rca_agent_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_10__seed_payment_test_validation_agent_prompt.yaml

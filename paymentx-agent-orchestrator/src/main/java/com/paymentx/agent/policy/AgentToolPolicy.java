@@ -1,12 +1,18 @@
 package com.paymentx.agent.policy;
 
 import com.paymentx.agent.exception.AgentException;
+import com.paymentx.agent.registry.AgentDefinition;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.Set;
-
 /**
+ * PHASE 4.1 UPDATE: the allow-list described below as "fixed, hardcoded" is now per-agent -
+ * registry.AgentDefinition.allowedTools(), resolved by registry.AgentRegistry - rather than a
+ * single class-wide constant. The default agent's configured allow-list is still exactly the
+ * same five tools named below, so single-agent behavior is unchanged; the rest of this javadoc's
+ * reasoning (default-deny, checked before MCP Gateway, independent of MCP's own authorization)
+ * is otherwise still accurate and kept for history.
+ *
  * English:
  * Step 9/30's real, code-enforced tool policy - a fixed, hardcoded,
  * default-deny ALLOW-LIST of the five real read-only tools this agent
@@ -73,22 +79,24 @@ import java.util.Set;
 @Slf4j
 public class AgentToolPolicy {
 
-    private static final Set<String> ALLOWED_TOOLS = Set.of(
-            "payment.lookup",
-            "payment.status",
-            "routing.lookup",
-            "reconciliation.status",
-            "audit.search"
-    );
-
-    public boolean isAllowed(String toolName) {
-        return toolName != null && ALLOWED_TOOLS.contains(toolName);
+    // Phase 4.1: the fixed, hardcoded, single-agent default-deny allow-list this class used to
+    // own directly has moved to registry.AgentDefinition.allowedTools() - one per agent, resolved
+    // by registry.AgentRegistry and passed in by the caller. This class is now a stateless
+    // checker of "is toolName in THIS agent's allow-list", but the property that made it Phase
+    // 3.8's single most important security rule is unchanged: still a default-deny allow-list
+    // (an unknown/invented/future tool name is denied purely by absence, never by pattern-
+    // matching known-bad names), still checked BEFORE client.McpToolClient is ever touched, still
+    // independent of - never a substitute for - MCP Gateway's own ToolAuthorizationService.
+    public boolean isAllowed(AgentDefinition definition, String toolName) {
+        return toolName != null && definition != null && definition.allowedTools().contains(toolName);
     }
 
-    public void checkAllowed(String toolName) {
-        if (!isAllowed(toolName)) {
-            log.warn("Agent tool policy denied toolName={}", toolName);
-            throw AgentException.toolNotAllowed("Tool is not permitted by Agent Policy in this phase: " + toolName);
+    public void checkAllowed(AgentDefinition definition, String toolName) {
+        if (!isAllowed(definition, toolName)) {
+            log.warn("Agent tool policy denied agentId={} toolName={}",
+                    definition != null ? definition.agentId() : "unknown", toolName);
+            throw AgentException.toolNotAllowed("Tool is not permitted for agent '"
+                    + (definition != null ? definition.agentId() : "unknown") + "': " + toolName);
         }
     }
 }

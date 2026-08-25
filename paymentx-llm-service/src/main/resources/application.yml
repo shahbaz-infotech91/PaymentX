@@ -73,39 +73,120 @@ logging:
 paymentx:
   service-name: LLM Service
 
-# The one real, configured LLM provider for Phase 3.3 - see
-# PAYMENTX_PHASE_3_3_LLM_SERVICE.md §6 for why Anthropic was chosen.
-# apiKey deliberately has an EMPTY placeholder default (":" with
-# nothing after it), never a real- or fake-looking value - if
-# LLM_API_KEY is unset, this service still starts and honestly reports
-# NOT_CONFIGURED via GET /api/v1/llm/health instead of crashing at boot
-# or fabricating a response.
+# The real, configured LLM provider(s). `provider` remains the PRIMARY provider selector,
+# unchanged meaning/default from before Phase 4.8.6 - env-overridable, defaults to anthropic for
+# any environment (e.g. prod) that never sets LLM_PROVIDER. Both providers' apiKey deliberately
+# have an EMPTY placeholder default (":" with nothing after it), never a real- or fake-looking
+# value - whichever one is not selected as primary/fallback can be fully unconfigured without
+# this service failing to start (LlmProviderRouter reports it honestly unavailable, never invents
+# a response).
+#
+# Phase 4.8.6 - `routing` adds automatic primary/fallback failover on top of the above, entirely
+# additive: provider.LlmProviderRouter (not AnthropicLlmProvider/GeminiLlmProvider directly) is
+# now the one LlmProvider bean LlmServiceImpl calls, and it reads this block to decide whether/
+# where to fail over. `fallback-providers` defaults to a single-element list containing
+# "anthropic" - in any environment where `provider` also defaults to "anthropic" (e.g. prod,
+# unless overridden), LlmProviderRouter detects primary==fallback and treats fallback as disabled
+# (logged once, not per-request) rather than looping a provider onto itself - so prod's existing
+# Anthropic-only behavior is completely unchanged unless an operator explicitly configures a
+# genuinely different LLM_FALLBACK_PROVIDERS.
+#
+# Phase 5 (Multi-Provider LLM Resilience Expansion) - `fallback-provider` (singular) widened to
+# `fallback-providers` (an ORDERED LIST, comma-delimited via env var - Spring Boot's relaxed
+# binding converts e.g. LLM_FALLBACK_PROVIDERS=anthropic,groq into a List<String> automatically,
+# no custom converter needed), so LlmProviderRouter can walk more than one fallback
+# (Gemini -> Anthropic -> Groq) without a second routing mechanism. Added `groq` as a third,
+# low-cost/high-free-tier provider specifically to stop Gemini's 20-requests/day free-tier quota
+# from blocking local development/agent E2E testing - see
+# PAYMENTX_PHASE_5_MULTI_PROVIDER_LLM_RESILIENCE.md for the full evaluation/rationale. Prod's
+# default fallback chain is UNCHANGED (still just anthropic) - Groq only enters the chain where
+# an operator explicitly adds it via LLM_FALLBACK_PROVIDERS (see application-dev.yml for the dev
+# profile's own explicit 2-hop chain).
 llm:
-  provider: anthropic
+  provider: ${LLM_PROVIDER:anthropic}
+  routing:
+    fallback-enabled: ${LLM_FALLBACK_ENABLED:true}
+    fallback-providers: ${LLM_FALLBACK_PROVIDERS:anthropic}
   anthropic:
     api-key: ${LLM_API_KEY:}
     model: ${LLM_MODEL:claude-opus-5}
     base-url: ${LLM_BASE_URL:}
     default-max-tokens: ${LLM_MAX_TOKENS:4096}
     timeout-seconds: ${LLM_TIMEOUT_SECONDS:60}
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-3.7-flash}
+    base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+    default-max-tokens: ${GEMINI_MAX_TOKENS:4096}
+    timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:60}
+  groq:
+    api-key: ${GROQ_API_KEY:}
+    model: ${GROQ_MODEL:llama-3.3-70b-versatile}
+    base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
+    default-max-tokens: ${GROQ_MAX_TOKENS:4096}
+    timeout-seconds: ${GROQ_TIMEOUT_SECONDS:60}
+  # Phase 5 (OpenAI last-resort paid fallback) - registered unconditionally like every other
+  # provider (so LlmProviderRouter/health() can always see it), but deliberately absent from this
+  # base file's own `fallback-providers` default above (still just "anthropic", unchanged) - a
+  # real, funded OpenAI credit balance must never enter any environment's failover chain by
+  # accident; an operator opts in explicitly via LLM_FALLBACK_PROVIDERS (see application-dev.yml
+  # for this deployment's own explicit 4-provider chain). `model` defaults to a low-cost,
+  # tool-calling-capable model (gpt-5.4-nano), not a flagship model - see LlmProperties.OpenAi's
+  # own javadoc for the full rationale. OPENAI_API_KEY has the same empty-placeholder default
+  # every other provider's api-key has - never hardcoded here.
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_MODEL:gpt-5.4-nano}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    default-max-tokens: ${OPENAI_MAX_TOKENS:4096}
+    timeout-seconds: ${OPENAI_TIMEOUT_SECONDS:60}
 
-# Reuses the exact instance-naming/tuning pattern
-# PAYMENTX_PHASE_3_ARCHITECTURE.md §8 recommends: the same shape as
-# payment-service's already-configured but previously-unwired
-# `routingService` instance, applied here and actually wired to
-# AnthropicLlmProvider.generate via @CircuitBreaker/@Retry(name =
-# "llmProvider"). WHY there is no retry-exceptions/ignore-exceptions
-# list here: those are purely class-based, but every failure this
-# service throws is the SAME class (LlmException) with a `retryable`
-# boolean that differs per instance (see its javadoc) - a class list
-# cannot express "retry this exception sometimes, not others" for a
-# single type. See config/ResilienceConfig.java's RetryConfigCustomizer
-# bean, which supplies the actual `ex instanceof LlmException le &&
-# le.isRetryable()` predicate this YAML block alone cannot express.
+# Reuses the exact instance-naming/tuning pattern PAYMENTX_PHASE_3_ARCHITECTURE.md §8
+# recommends. Phase 4.8.6 - was a single shared "llmProvider" instance when only one provider
+# bean was ever active at a time; now split into one instance per provider (same tuning,
+# duplicated) since LlmProviderRouter can call either concurrently and each must have its own
+# independent circuit-breaker/retry state - sharing one would let Gemini's failures incorrectly
+# trip the breaker guarding Anthropic calls, and vice versa. WHY there is no retry-exceptions/
+# ignore-exceptions list here: those are purely class-based, but every failure this service
+# throws is the SAME class (LlmException) with a `retryable` boolean that differs per instance
+# (see its javadoc) - a class list cannot express "retry this exception sometimes, not others"
+# for a single type. See config/ResilienceConfig.java's two RetryConfigCustomizer beans, which
+# supply the actual `ex instanceof LlmException le && le.isRetryable()` predicate this YAML block
+# alone cannot express.
 resilience4j:
   circuitbreaker:
     instances:
-      llmProvider:
+      llmProvider-gemini:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      llmProvider-anthropic:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      # Phase 5 (Multi-Provider LLM Resilience Expansion) - third provider, own independent
+      # circuit-breaker instance (same tuning as the other two) - a broken Groq provider must
+      # never trip the breaker guarding Gemini or Anthropic calls, and vice versa.
+      llmProvider-groq:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+      # Phase 5 (OpenAI last-resort paid fallback) - fourth provider, own independent
+      # circuit-breaker instance (same tuning as the other three) - a broken OpenAI provider must
+      # never trip the breaker guarding Gemini/Anthropic/Groq calls, and vice versa.
+      llmProvider-openai:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 20
         minimum-number-of-calls: 10
@@ -115,9 +196,39 @@ resilience4j:
         automatic-transition-from-open-to-half-open-enabled: true
   retry:
     instances:
-      llmProvider:
+      llmProvider-gemini:
         max-attempts: 3
         wait-duration: 500ms
         enable-exponential-backoff: true
         exponential-backoff-multiplier: 2
         enable-randomized-wait-factor: true
+      llmProvider-anthropic:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      llmProvider-groq:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      llmProvider-openai:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+  ratelimiter:
+    instances:
+      # Phase 5 - guards the single choke point every real Gemini/Anthropic call funnels through
+      # (LlmServiceImpl.generate), regardless of caller or active provider. Deliberately generous:
+      # 8 permits per 10s comfortably covers one legitimate agent execution's own sequential
+      # planning-loop calls (up to maxIterations=5 plus one final-answer synthesis call), while
+      # still bounding a genuine flood (duplicate click, extra tab, runaway retry loop) that would
+      # otherwise burn Gemini's 20-requests/day free-tier quota in a few seconds unnoticed.
+      llmGenerate:
+        limit-for-period: 8
+        limit-refresh-period: 10s
+        timeout-duration: 5s

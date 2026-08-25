@@ -97,4 +97,12 @@ public class AgentException extends PaymentXException {
     public static AgentException internalError(String message) {
         return new AgentException(AgentErrorCodes.INTERNAL_ERROR, message, false, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    public static AgentException agentNotFound(String message) {
+        return new AgentException(AgentErrorCodes.AGENT_NOT_FOUND, message, false, HttpStatus.NOT_FOUND);
+    }
+
+    public static AgentException agentDisabled(String message) {
+        return new AgentException(AgentErrorCodes.AGENT_DISABLED, message, false, HttpStatus.FORBIDDEN);
+    }
 }

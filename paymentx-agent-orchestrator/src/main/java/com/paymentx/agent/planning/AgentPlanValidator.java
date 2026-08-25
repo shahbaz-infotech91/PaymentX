@@ -3,6 +3,7 @@ package com.paymentx.agent.planning;
 import com.paymentx.agent.client.McpToolClient;
 import com.paymentx.agent.exception.AgentException;
 import com.paymentx.agent.policy.AgentToolPolicy;
+import com.paymentx.agent.registry.AgentDefinition;
 import com.paymentx.agent.state.AgentPlan;
 import com.paymentx.agent.state.PlanAction;
 import lombok.extern.slf4j.Slf4j;
@@ -76,13 +77,17 @@ public class AgentPlanValidator {
         this.toolPolicy = toolPolicy;
     }
 
-    public void validate(AgentPlan plan, List<McpToolClient.ToolSummary> discoveredTools) {
+    // Phase 4.1 - the AgentDefinition is resolved by registry.AgentRegistry from the trusted
+    // request/config path, never derived from the plan itself; the LLM's own output (AgentPlan)
+    // has no field capable of naming or influencing which agent/allow-list applies (see
+    // state.AgentPlan) - it can only propose an action against the definition it is given.
+    public void validate(AgentPlan plan, List<McpToolClient.ToolSummary> discoveredTools, AgentDefinition definition) {
         if (plan.action() == null) {
             throw AgentException.planInvalid("Plan has no recognizable action.");
         }
 
         switch (plan.action()) {
-            case CALL_TOOL -> validateCallTool(plan, discoveredTools);
+            case CALL_TOOL -> validateCallTool(plan, discoveredTools, definition);
             case RETRIEVE_KNOWLEDGE -> {
                 if (isBlank(plan.ragQuery())) {
                     throw AgentException.planInvalid("RETRIEVE_KNOWLEDGE plan is missing ragQuery.");
@@ -96,7 +101,7 @@ public class AgentPlanValidator {
         }
     }
 
-    private void validateCallTool(AgentPlan plan, List<McpToolClient.ToolSummary> discoveredTools) {
+    private void validateCallTool(AgentPlan plan, List<McpToolClient.ToolSummary> discoveredTools, AgentDefinition definition) {
         if (isBlank(plan.tool())) {
             throw AgentException.planInvalid("CALL_TOOL plan is missing tool name.");
         }
@@ -111,8 +116,9 @@ public class AgentPlanValidator {
             throw AgentException.planInvalid("Plan referenced a tool that does not exist: " + plan.tool());
         }
 
-        // Step 9/30 - independent, code-enforced policy check; never bypassed by registry presence alone.
-        toolPolicy.checkAllowed(plan.tool());
+        // Step 9/30 - independent, code-enforced policy check, now scoped to the resolved agent's
+        // own allow-list; never bypassed by MCP registry presence alone.
+        toolPolicy.checkAllowed(definition, plan.tool());
     }
 
     private boolean isBlank(String value) {

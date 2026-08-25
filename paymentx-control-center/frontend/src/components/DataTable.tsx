@@ -47,6 +47,10 @@ interface DataTableProps<T> {
   getRowKey: (row: T) => string
   emptyTitle?: string
   emptyMessage?: string
+  /** Phase 4.7 addition - optional, backward compatible (every existing caller omits it and is
+   *  unaffected). When provided, each row becomes clickable (Execution History's own detail
+   *  Drawer uses this instead of a per-cell click handler). */
+  onRowClick?: (row: T) => void
 }
 
 export function DataTable<T>({
@@ -55,6 +59,7 @@ export function DataTable<T>({
   getRowKey,
   emptyTitle = 'No records',
   emptyMessage = 'There is nothing to display yet.',
+  onRowClick,
 }: DataTableProps<T>) {
   if (rows.length === 0) {
     return <EmptyState title={emptyTitle} message={emptyMessage} />
@@ -74,7 +79,12 @@ export function DataTable<T>({
         </TableHead>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={getRowKey(row)} hover>
+            <TableRow
+              key={getRowKey(row)}
+              hover
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              sx={onRowClick ? { cursor: 'pointer' } : undefined}
+            >
               {columns.map((column) => (
                 <TableCell key={column.key} align={column.align ?? 'left'}>
                   {column.render(row)}

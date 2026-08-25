@@ -2,6 +2,7 @@ package com.paymentx.payment.service.impl;
 
 import com.paymentx.common.dto.PageResponse;
 import com.paymentx.common.exception.ResourceNotFoundException;
+import com.paymentx.payment.dto.PaymentHistoryResponse;
 import com.paymentx.payment.dto.PaymentResponse;
 import com.paymentx.payment.dto.PaymentSearchCriteria;
 import com.paymentx.payment.dto.PaymentStatusResponse;
@@ -10,6 +11,7 @@ import com.paymentx.payment.entity.PaymentStatus;
 import com.paymentx.payment.mapper.PaymentMapper;
 import com.paymentx.payment.repository.PaymentRepository;
 import com.paymentx.payment.repository.PaymentSpecifications;
+import com.paymentx.payment.repository.PaymentStatusHistoryRepository;
 import com.paymentx.payment.service.PaymentQueryService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -42,10 +44,13 @@ public class PaymentQueryServiceImpl implements PaymentQueryService {
 
     private final PaymentRepository paymentRepository;
     private final PaymentMapper paymentMapper;
+    private final PaymentStatusHistoryRepository statusHistoryRepository;
 
-    public PaymentQueryServiceImpl(PaymentRepository paymentRepository, PaymentMapper paymentMapper) {
+    public PaymentQueryServiceImpl(PaymentRepository paymentRepository, PaymentMapper paymentMapper,
+                                    PaymentStatusHistoryRepository statusHistoryRepository) {
         this.paymentRepository = paymentRepository;
         this.paymentMapper = paymentMapper;
+        this.statusHistoryRepository = statusHistoryRepository;
     }
 
     @Override
@@ -56,6 +61,13 @@ public class PaymentQueryServiceImpl implements PaymentQueryService {
     @Override
     public PaymentStatusResponse getStatus(String paymentReference) {
         return paymentMapper.toStatusResponse(findOrThrow(paymentReference));
+    }
+
+    @Override
+    public PaymentHistoryResponse getHistory(String paymentReference) {
+        Payment payment = findOrThrow(paymentReference);
+        var history = statusHistoryRepository.findByPaymentIdOrderByTransitionedAtAsc(payment.getId());
+        return new PaymentHistoryResponse(paymentMapper.toResponse(payment), paymentMapper.toHistoryItems(history));
     }
 
     @Override

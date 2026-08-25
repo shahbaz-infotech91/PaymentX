@@ -7,6 +7,7 @@ import com.paymentx.reconciliation.config.ReconciliationProperties;
 import com.paymentx.reconciliation.dto.BatchResponse;
 import com.paymentx.reconciliation.dto.MismatchRecordResponse;
 import com.paymentx.reconciliation.dto.MismatchSearchCriteria;
+import com.paymentx.reconciliation.dto.ReconciliationRecordResponse;
 import com.paymentx.reconciliation.dto.ReconciliationSummaryResponse;
 import com.paymentx.reconciliation.dto.SettlementFileResponse;
 import com.paymentx.reconciliation.dto.StartReconciliationRequest;
@@ -199,6 +200,14 @@ public class ReconciliationServiceImpl implements ReconciliationService {
         return PageResponse.of(
                 pageResult.getContent().stream().map(reconciliationMapper::toResponse).toList(),
                 pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReconciliationRecordResponse> findRecordsByReference(String paymentReference) {
+        return reconciliationRecordRepository.findByReferenceIdOrderByCreatedAtDesc(paymentReference).stream()
+                .map(reconciliationMapper::toResponse)
+                .toList();
     }
 
     @Override

@@ -49,6 +49,10 @@ public final class AgentErrorCodes {
     public static final String TOOL_NOT_ALLOWED = "TOOL_NOT_ALLOWED";
     public static final String TOOL_EXECUTION_FAILED = "TOOL_EXECUTION_FAILED";
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+    // Phase 4.1 - agent identity resolution failures, thrown by registry.AgentRegistry.resolve
+    // before any planning/tool/RAG work begins for the request.
+    public static final String AGENT_NOT_FOUND = "AGENT_NOT_FOUND";
+    public static final String AGENT_DISABLED = "AGENT_DISABLED";
 
     private AgentErrorCodes() {
     }

@@ -85,7 +85,20 @@ import java.util.Map;
 @Slf4j
 public class McpToolClient {
 
-    public record ToolSummary(String name, String description) {
+    // Phase 4.8.5 remediation - argumentProperties/requiredArguments carry the real MCP
+    // inputSchema (tool.inputSchema().properties()/.required()) that tools/list already returns
+    // over the real MCP protocol but this record previously discarded entirely, leaving
+    // AgentPlanner.formatAvailableTools() to expose only a free-text description to the LLM -
+    // every argument key name (e.g. paymentReference) had to be inferred from prose, with no
+    // machine-readable schema guidance at all. Root cause of an observed live Gemini run
+    // producing an INVALID_TOOL_ARGUMENTS payment.lookup call (2026-08-24): confirmed by reading
+    // this class, not by guessing from that one failure. The secondary two-arg constructor
+    // preserves every existing call site (test and production) exactly as-is.
+    public record ToolSummary(String name, String description, Map<String, Object> argumentProperties,
+                               List<String> requiredArguments) {
+        public ToolSummary(String name, String description) {
+            this(name, description, Map.of(), List.of());
+        }
     }
 
     public record ToolCallOutcome(boolean isError, Map<String, Object> structuredContent, String textContent) {
@@ -113,11 +126,20 @@ public class McpToolClient {
     public List<ToolSummary> listTools() {
         try {
             McpSchema.ListToolsResult result = ensureClient().listTools();
-            return result.tools().stream().map(tool -> new ToolSummary(tool.name(), tool.description())).toList();
+            return result.tools().stream().map(this::toSummary).toList();
         } catch (Exception mcpFailure) {
             log.warn("MCP Gateway tools/list failed reason={}", mcpFailure.getMessage());
             throw AgentException.mcpGatewayUnavailable("MCP Gateway tool discovery failed: " + mcpFailure.getMessage(), true);
         }
+    }
+
+    // Phase 4.8.5 remediation - see ToolSummary's own javadoc for why this now also carries the
+    // real inputSchema instead of discarding it.
+    private ToolSummary toSummary(McpSchema.Tool tool) {
+        McpSchema.JsonSchema schema = tool.inputSchema();
+        Map<String, Object> properties = schema != null && schema.properties() != null ? schema.properties() : Map.of();
+        List<String> required = schema != null && schema.required() != null ? schema.required() : List.of();
+        return new ToolSummary(tool.name(), tool.description(), properties, required);
     }
 
     @CircuitBreaker(name = "mcpGateway")

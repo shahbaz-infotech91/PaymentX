@@ -71,6 +71,9 @@ const PAGE_COMPONENTS: Record<RouteDefinition['path'], () => Promise<{ default: 
   '/settings': () => import('../pages/SettingsPage'),
   '/ai-assistant': () => import('../pages/AiAssistantPage'),
   '/ai-metrics': () => import('../pages/AiMetricsPage'),
+  '/ai-agents': () => import('../pages/AiAgentsPage'),
+  '/ai-agents/execute': () => import('../pages/AiAgentExecutePage'),
+  '/ai-agents/history': () => import('../pages/AiAgentHistoryPage'),
 }
 
 /**

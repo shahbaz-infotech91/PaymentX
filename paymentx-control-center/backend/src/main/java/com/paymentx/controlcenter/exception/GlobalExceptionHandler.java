@@ -55,6 +55,17 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(new ErrorResponse(ex.getErrorCode(), ex.getMessage(), request.getRequestURI())));
     }
 
+    // Checked ahead of the generic ControlCenterException handler below (Spring resolves the most
+    // specific matching @ExceptionHandler automatically) for the same reason as
+    // handleAiServiceNotReady above: "this record does not exist" is a 404 Not Found, not a 502
+    // Bad Gateway - there is no upstream call that failed, the lookup simply had no match.
+    @ExceptionHandler(AgentExecutionNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAgentExecutionNotFound(AgentExecutionNotFoundException ex, HttpServletRequest request) {
+        log.info("AgentExecutionNotFoundException errorCode={} path={}", ex.getErrorCode(), request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(new ErrorResponse(ex.getErrorCode(), ex.getMessage(), request.getRequestURI())));
+    }
+
     @ExceptionHandler(ControlCenterException.class)
     public ResponseEntity<ApiResponse<Void>> handleControlCenterException(ControlCenterException ex, HttpServletRequest request) {
         log.warn("ControlCenterException errorCode={} path={}", ex.getErrorCode(), request.getRequestURI(), ex);

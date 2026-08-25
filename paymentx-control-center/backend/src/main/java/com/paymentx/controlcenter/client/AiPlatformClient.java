@@ -3,6 +3,10 @@ package com.paymentx.controlcenter.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paymentx.controlcenter.config.CorrelationIdFilter;
+import com.paymentx.controlcenter.dto.agent.AgentExecutionMetadata;
+import com.paymentx.controlcenter.dto.agent.AgentSummary;
+import com.paymentx.controlcenter.dto.agent.RagSourceSummary;
+import com.paymentx.controlcenter.dto.agent.ToolCallSummary;
 import com.paymentx.controlcenter.dto.ai.AiComponentStatus;
 import com.paymentx.controlcenter.exception.AiServiceNotReadyException;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +20,9 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -267,6 +274,127 @@ public class AiPlatformClient {
                     : "Agent Orchestrator call failed with HTTP " + httpError.getStatusCode().value();
             log.warn("Agent Orchestrator execute call failed httpStatus={} errorCode={}", httpError.getStatusCode().value(), errorCode);
             throw new AiServiceNotReadyException(errorCode, message);
+        } catch (ResourceAccessException connectionFailure) {
+            log.warn("Agent Orchestrator unreachable reason={}", connectionFailure.getMessage());
+            throw new AiServiceNotReadyException("AI_SERVICE_NOT_READY",
+                    "Could not reach Agent Orchestrator: " + connectionFailure.getMostSpecificCause().getMessage());
+        }
+    }
+
+    /**
+     * Phase 4.7 addition - the full, real result of one Agent Orchestrator execution, for the AI
+     * Agent Control Center. Unlike AgentExecuteResult (which only ever kept answer/status for the
+     * older, chat-oriented sendMessage path), this carries every field Phase 4.7 added to Agent
+     * Orchestrator's own real response (executionId/correlationId/agentId/sources/toolEvidence/
+     * executionMetadata) - nothing here is fabricated; a field is null/empty only when Agent
+     * Orchestrator's own real response had nothing for it.
+     */
+    public record FullAgentExecuteResult(
+            String executionId, String correlationId, String agentId, String status, String answer,
+            List<RagSourceSummary> sources, List<ToolCallSummary> toolsCalled, AgentExecutionMetadata executionMetadata,
+            // Phase 5 - LLM provider/fallback visibility, verbatim from Agent Orchestrator's own
+            // real response (see paymentx-agent-orchestrator's AgentExecuteResponse, which gained
+            // these same three fields this phase from AgentExecution/LlmProviderRouter).
+            String provider, boolean fallbackUsed, String fallbackReason) {
+    }
+
+    /**
+     * Phase 4.7 - calls the same real POST /api/v1/agent/execute, now passing the real agentId/
+     * paymentReference the AI Agent Control Center's own execute form collects, and parsing the
+     * FULL response Agent Orchestrator returns (Phase 4.7 also extended that response with
+     * executionId/correlationId/agentId for exactly this purpose). Deliberately a separate method
+     * from executeAgent() above rather than changing its signature - AiChatService's existing chat
+     * contract is untouched, zero regression risk to the AI Assistant feature.
+     */
+    public FullAgentExecuteResult executeAgentFull(String agentOrchestratorUrl, String agentId, String userQuery,
+                                                     String paymentReference, String conversationId, String correlationId) {
+        String url = agentOrchestratorUrl + "/api/v1/agent/execute";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (correlationId != null) {
+            headers.add(CorrelationIdFilter.HEADER_NAME, correlationId);
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("conversationId", conversationId);
+        body.put("userQuery", userQuery);
+        body.put("agentId", agentId);
+        if (paymentReference != null && !paymentReference.isBlank()) {
+            body.put("paymentReference", paymentReference);
+        }
+
+        try {
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                    url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class);
+            JsonNode data = response.getBody() != null ? response.getBody().path("data") : null;
+            if (data == null || data.isMissingNode()) {
+                throw new AiServiceNotReadyException("AI_SERVICE_NOT_READY", "Agent Orchestrator returned an empty response body.");
+            }
+
+            List<RagSourceSummary> sources = new ArrayList<>();
+            data.path("sources").forEach(s -> sources.add(new RagSourceSummary(
+                    s.path("source").asText(null), s.path("score").isMissingNode() ? null : s.path("score").asDouble())));
+
+            List<ToolCallSummary> toolsCalled = new ArrayList<>();
+            data.path("toolEvidence").forEach(t -> toolsCalled.add(new ToolCallSummary(
+                    t.path("toolName").asText(null), t.path("status").asText(null), t.path("result"))));
+
+            JsonNode meta = data.path("executionMetadata");
+            AgentExecutionMetadata executionMetadata = meta.isMissingNode() ? null : new AgentExecutionMetadata(
+                    meta.path("iterations").asInt(0), meta.path("toolCallCount").asInt(0),
+                    meta.path("ragUsed").asBoolean(false), meta.path("totalLatencyMs").asLong(0));
+
+            return new FullAgentExecuteResult(
+                    data.path("executionId").asText(null), data.path("correlationId").asText(null),
+                    data.path("agentId").asText(agentId), data.path("status").asText("FAILED"),
+                    data.path("answer").asText(""), sources, toolsCalled, executionMetadata,
+                    data.path("provider").isMissingNode() || data.path("provider").isNull() ? null : data.path("provider").asText(),
+                    data.path("fallbackUsed").asBoolean(false),
+                    data.path("fallbackReason").isMissingNode() || data.path("fallbackReason").isNull() ? null : data.path("fallbackReason").asText());
+        } catch (RestClientResponseException httpError) {
+            JsonNode errorBody = parseBodySafely(httpError.getResponseBodyAsString());
+            String errorCode = errorBody != null ? errorBody.path("error").path("errorCode").asText("AI_SERVICE_NOT_READY") : "AI_SERVICE_NOT_READY";
+            String message = errorBody != null && !errorBody.path("error").path("message").isMissingNode()
+                    ? errorBody.path("error").path("message").asText()
+                    : "Agent Orchestrator call failed with HTTP " + httpError.getStatusCode().value();
+            log.warn("Agent Orchestrator execute call failed httpStatus={} errorCode={}", httpError.getStatusCode().value(), errorCode);
+            throw new AiServiceNotReadyException(errorCode, message);
+        } catch (ResourceAccessException connectionFailure) {
+            log.warn("Agent Orchestrator unreachable reason={}", connectionFailure.getMessage());
+            throw new AiServiceNotReadyException("AI_SERVICE_NOT_READY",
+                    "Could not reach Agent Orchestrator: " + connectionFailure.getMostSpecificCause().getMessage());
+        }
+    }
+
+    /**
+     * Phase 4.7 - calls the new, real GET /api/v1/agent/agents (added to Agent Orchestrator this
+     * phase) so the AI Agent Control Center's dashboard/execute-form agent list is always the real
+     * live registry, never a hardcoded five-agent list duplicated in this module.
+     */
+    public List<AgentSummary> listAgents(String agentOrchestratorUrl) {
+        String url = agentOrchestratorUrl + "/api/v1/agent/agents";
+        try {
+            ResponseEntity<JsonNode> response = restTemplate.exchange(url, HttpMethod.GET, HttpEntity.EMPTY, JsonNode.class);
+            JsonNode data = response.getBody() != null ? response.getBody().path("data") : null;
+            if (data == null || !data.isArray()) {
+                throw new AiServiceNotReadyException("AI_SERVICE_NOT_READY", "Agent Orchestrator returned an empty agent list.");
+            }
+            List<AgentSummary> agents = new ArrayList<>();
+            data.forEach(a -> {
+                List<String> capabilities = new ArrayList<>();
+                a.path("capabilities").forEach(c -> capabilities.add(c.asText()));
+                List<String> allowedTools = new ArrayList<>();
+                a.path("allowedTools").forEach(t -> allowedTools.add(t.asText()));
+                agents.add(new AgentSummary(
+                        a.path("agentId").asText(null), a.path("name").asText(null), a.path("description").asText(null),
+                        a.path("version").asText(null), capabilities, allowedTools,
+                        a.path("riskLevel").asText(null), a.path("enabled").asBoolean(false)));
+            });
+            return agents;
+        } catch (RestClientResponseException httpError) {
+            log.warn("Agent Orchestrator agents list call failed httpStatus={}", httpError.getStatusCode().value());
+            throw new AiServiceNotReadyException("AI_SERVICE_NOT_READY",
+                    "Agent Orchestrator call failed with HTTP " + httpError.getStatusCode().value());
         } catch (ResourceAccessException connectionFailure) {
             log.warn("Agent Orchestrator unreachable reason={}", connectionFailure.getMessage());
             throw new AiServiceNotReadyException("AI_SERVICE_NOT_READY",

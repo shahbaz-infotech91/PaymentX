@@ -45,6 +45,13 @@ public class McpGatewayProperties {
     private String routingServiceUrl = "http://localhost:8084";
     private String auditServiceUrl = "http://localhost:8085";
     private String reconciliationServiceUrl = "http://localhost:8087";
+    // Phase 4.4 addition - Control Center's own, already-existing, read-only
+    // GET /api/v1/postgres/payments/stats and GET /api/v1/postgres/databases/{database}/tables
+    // endpoints (PostgresController/PostgresDataService) - called directly, same as routing/audit/
+    // reconciliation-service above, never through the API Gateway (Control Center is not one of the
+    // two services the Gateway routes to). Reuses these existing, hardcoded/parameterized,
+    // already-bounded queries rather than adding any new SQL or database connection to this module.
+    private String controlCenterUrl = "http://localhost:8089";
 
     /** Phase 3.9 addition - payment-service is called through the real API Gateway (see paymentServiceUrl's
      * comment), and the Gateway's real ApiKeyAuthenticationGlobalFilter rejects any request with no
@@ -69,6 +76,8 @@ public class McpGatewayProperties {
     private int reconciliationReadTimeoutMs = 5000;
     private int auditSearchConnectTimeoutMs = 3000;
     private int auditSearchReadTimeoutMs = 8000;
+    private int controlCenterConnectTimeoutMs = 3000;
+    private int controlCenterReadTimeoutMs = 5000;
     private int auditWriteConnectTimeoutMs = 2000;
     private int auditWriteReadTimeoutMs = 3000;
 

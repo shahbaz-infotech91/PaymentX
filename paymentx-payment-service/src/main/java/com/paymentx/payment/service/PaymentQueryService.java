@@ -1,6 +1,7 @@
 package com.paymentx.payment.service;
 
 import com.paymentx.common.dto.PageResponse;
+import com.paymentx.payment.dto.PaymentHistoryResponse;
 import com.paymentx.payment.dto.PaymentResponse;
 import com.paymentx.payment.dto.PaymentSearchCriteria;
 import com.paymentx.payment.dto.PaymentStatusResponse;
@@ -29,6 +30,13 @@ public interface PaymentQueryService {
     PaymentResponse getByReference(String paymentReference);
 
     PaymentStatusResponse getStatus(String paymentReference);
+
+    /** Phase 4.8.0 - wires up the pre-existing PaymentHistoryResponse/PaymentStatusHistoryItem
+     *  DTOs and PaymentStatusHistoryRepository (originally spec item #13, written by
+     *  PaymentEngineImpl/RetryScheduler/TimeoutScheduler on every real status transition, but
+     *  never previously exposed by any service method or REST endpoint) - a real, precise,
+     *  ordered state-transition timeline for Incident RCA's own timeline-analysis requirement. */
+    PaymentHistoryResponse getHistory(String paymentReference);
 
     PageResponse<PaymentResponse> list(PaymentStatus status, int page, int size);
 

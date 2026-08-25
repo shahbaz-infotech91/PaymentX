@@ -48,6 +48,23 @@ public record AgentExecuteResponse(
         AgentResponseStatus status,
         List<SourceEvidence> sources,
         List<ToolEvidence> toolEvidence,
-        ExecutionMetadata executionMetadata
+        ExecutionMetadata executionMetadata,
+        // Phase 4.7 - additive fields (same "frontend may choose to render later without any
+        // backend contract break" precedent this record's own javadoc already established for
+        // sources/toolEvidence). executionId is the same value AgentAuditClient already records
+        // as its audit event's own `reference` field - this is not a new identifier, only a newly
+        // surfaced one, so a Control Center execution-history detail lookup can resolve the exact
+        // audit record a live execution response corresponds to.
+        String executionId,
+        String correlationId,
+        String agentId,
+        // Phase 5 - additive LLM provider/fallback visibility (same "frontend may choose to
+        // render later without any backend contract break" precedent this record's own javadoc
+        // already established). provider/fallbackReason are the raw provider name / LlmException
+        // error code strings LlmProviderRouter already produces - never a credential, never a
+        // stack trace.
+        String provider,
+        boolean fallbackUsed,
+        String fallbackReason
 ) {
 }

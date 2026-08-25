@@ -144,4 +144,70 @@ class LlmServiceImplTest {
         assertThat(health.status()).isEqualTo("NOT_CONFIGURED");
         assertThat(health.apiKeyPresent()).isFalse();
     }
+
+    // Phase 4.8.4 - provider selection: health() must read the config block
+    // matching whichever LlmProvider bean is actually active, not always
+    // Anthropic's. These two tests pin down both branches explicitly.
+
+    @Test
+    void health_providerSelectionGemini_reportsGeminiConfigNotAnthropic() {
+        properties.getGemini().setApiKey("gemini-configured-key");
+        properties.getGemini().setModel("gemini-3.7-flash");
+        properties.getAnthropic().setApiKey(null); // deliberately unconfigured - must not affect the Gemini path
+        when(llmProvider.providerName()).thenReturn("gemini");
+
+        LlmHealthResponse health = llmService.health();
+
+        assertThat(health.status()).isEqualTo("CONFIGURED");
+        assertThat(health.provider()).isEqualTo("gemini");
+        assertThat(health.apiKeyPresent()).isTrue();
+        assertThat(health.configuredModel()).isEqualTo("gemini-3.7-flash");
+    }
+
+    @Test
+    void health_providerSelectionGemini_apiKeyAbsent_reportsNotConfigured_evenWhenAnthropicIsConfigured() {
+        properties.getGemini().setApiKey("");
+        properties.getAnthropic().setApiKey("anthropic-configured-key"); // deliberately configured - must not leak into the Gemini path
+        when(llmProvider.providerName()).thenReturn("gemini");
+
+        LlmHealthResponse health = llmService.health();
+
+        assertThat(health.status()).isEqualTo("NOT_CONFIGURED");
+        assertThat(health.provider()).isEqualTo("gemini");
+        assertThat(health.apiKeyPresent()).isFalse();
+    }
+
+    @Test
+    void health_providerSelectionAnthropic_stillReportsAnthropicConfig_unaffectedByGemini() {
+        properties.getAnthropic().setApiKey("anthropic-configured-key");
+        properties.getAnthropic().setModel("claude-opus-5");
+        properties.getGemini().setApiKey("gemini-configured-key"); // deliberately configured - must not leak into the Anthropic path
+        when(llmProvider.providerName()).thenReturn("anthropic");
+
+        LlmHealthResponse health = llmService.health();
+
+        assertThat(health.status()).isEqualTo("CONFIGURED");
+        assertThat(health.provider()).isEqualTo("anthropic");
+        assertThat(health.configuredModel()).isEqualTo("claude-opus-5");
+    }
+
+    @Test
+    void generate_delegatesToGeminiProvider_mapsResultFieldsIdenticallyToAnthropic() {
+        properties.getGemini().setApiKey("gemini-configured-key");
+        when(llmProvider.providerName()).thenReturn("gemini");
+        when(llmProvider.generate(any(LlmProviderRequest.class))).thenReturn(new LlmProviderResult(
+                "gemini", "gemini-3.7-flash", "The answer is 42.", "STOP", false, 100, 20, null, null, 350));
+
+        GenerateResponse response = llmService.generate(new GenerateRequest("What is the answer?", null, null, null, null));
+
+        assertThat(response.provider()).isEqualTo("gemini");
+        assertThat(response.model()).isEqualTo("gemini-3.7-flash");
+        assertThat(response.content()).isEqualTo("The answer is 42.");
+        assertThat(response.stopReason()).isEqualTo("STOP");
+        assertThat(response.refused()).isFalse();
+        assertThat(response.usage().inputTokens()).isEqualTo(100);
+        assertThat(response.usage().outputTokens()).isEqualTo(20);
+
+        verify(llmProvider).generate(any(LlmProviderRequest.class));
+    }
 }

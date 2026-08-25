@@ -60,6 +60,14 @@ public record GenerateResponse(
         String stopReason,
         boolean refused,
         LlmUsage usage,
-        long latencyMs
+        long latencyMs,
+        // Phase 4.8.6 addition - additive, backward-compatible for every existing consumer:
+        // paymentx-agent-orchestrator's own LlmServiceClient parses this response as a generic
+        // JsonNode (never a strict-typed DTO), so a new field is simply ignored by any caller
+        // that doesn't look for it. `provider`/`model` above already correctly reflect whichever
+        // provider actually served the request (LlmServiceImpl.toResponse always builds this from
+        // the real LlmProviderResult, fallback or not) - these two fields add the "why" on top.
+        boolean fallbackUsed,
+        String fallbackReason
 ) {
 }

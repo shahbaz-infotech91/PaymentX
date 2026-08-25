@@ -4,7 +4,10 @@ import com.paymentx.agent.config.CorrelationIdFilter;
 import com.paymentx.agent.dto.AgentExecuteRequest;
 import com.paymentx.agent.dto.AgentExecuteResponse;
 import com.paymentx.agent.dto.AgentHealthResponse;
+import com.paymentx.agent.dto.AgentSummaryResponse;
 import com.paymentx.agent.orchestrator.AgentOrchestratorService;
+import com.paymentx.agent.registry.AgentDefinition;
+import com.paymentx.agent.registry.AgentRegistry;
 import com.paymentx.common.constant.HeaderConstants;
 import com.paymentx.common.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +22,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * English:
@@ -63,20 +68,40 @@ import org.springframework.web.bind.annotation.RestController;
 public class AgentController {
 
     private final AgentOrchestratorService agentOrchestratorService;
+    private final AgentRegistry agentRegistry;
 
     @PostMapping("/execute")
     @Operation(summary = "Run one bounded agent execution for a user query",
-            description = "Internal-only - called by Control Center's AiChatService, never directly by the browser.")
+            description = "Internal-only - called by Control Center's AiChatService, never directly by the browser. "
+                    + "An omitted agentId resolves to the platform default agent (Phase 3.8's original single agent), "
+                    + "unchanged since before Phase 4.1.")
     public ResponseEntity<ApiResponse<AgentExecuteResponse>> execute(@Valid @RequestBody AgentExecuteRequest request,
                                                                       HttpServletRequest httpRequest) {
+        // Phase 4.1 - agent identity is resolved here, from the trusted registry, BEFORE the
+        // orchestrator loop starts - never derived from anything the planning LLM later proposes.
+        AgentDefinition definition = agentRegistry.resolve(request.agentId());
         String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
         String traceId = httpRequest.getHeader(HeaderConstants.TRACE_ID);
-        return ResponseEntity.ok(ApiResponse.success(agentOrchestratorService.execute(request, correlationId, traceId)));
+        return ResponseEntity.ok(ApiResponse.success(agentOrchestratorService.execute(request, definition, correlationId, traceId)));
     }
 
     @GetMapping("/health")
     @Operation(summary = "Report real reachability of the four downstream AI Platform services this agent orchestrates")
     public ResponseEntity<ApiResponse<AgentHealthResponse>> health() {
         return ResponseEntity.ok(ApiResponse.success(agentOrchestratorService.health()));
+    }
+
+    @GetMapping("/agents")
+    @Operation(summary = "List every registered agent",
+            description = "Phase 4.7 - the real AgentRegistry contents, for Control Center's AI Agent Control "
+                    + "Center dashboard. Never a hardcoded list; adding/removing an agent from application.yml "
+                    + "changes this response with zero code change here.")
+    public ResponseEntity<ApiResponse<List<AgentSummaryResponse>>> agents() {
+        List<AgentSummaryResponse> summaries = agentRegistry.list().stream()
+                .map(definition -> new AgentSummaryResponse(
+                        definition.agentId(), definition.name(), definition.description(), definition.version(),
+                        definition.capabilities(), definition.allowedTools(), definition.riskLevel(), definition.enabled()))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(summaries));
     }
 }

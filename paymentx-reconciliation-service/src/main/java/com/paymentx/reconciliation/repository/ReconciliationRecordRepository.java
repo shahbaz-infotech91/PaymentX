@@ -24,4 +24,13 @@ public interface ReconciliationRecordRepository extends JpaRepository<Reconcilia
     List<ReconciliationRecord> findByBatchId(UUID batchId);
 
     boolean existsByPaymentIdAndBatchId(String paymentId, UUID batchId);
+
+    // Phase 4.6.0 - the real paymentReference -> batchId bridge: referenceId is populated from
+    // the same "paymentReference"/"reference" payload field every other PaymentX read path (MCP's
+    // payment.lookup, audit.search) already keys on - see event/ReconciliationEventConsumer's own
+    // firstNonBlank(payload, "paymentReference", "reference") construction of InternalTransaction.
+    // Most-recent-first because a reference can legitimately appear in more than one batch (e.g.
+    // reprocessBatch re-running matching), and the newest comparison is the one evidence-based
+    // analysis should read first.
+    List<ReconciliationRecord> findByReferenceIdOrderByCreatedAtDesc(String referenceId);
 }

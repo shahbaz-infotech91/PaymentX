@@ -7,10 +7,15 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.notMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
@@ -117,4 +122,101 @@ class RagServiceClientTest {
             wireMockServer.start();
         }
     }
+
+    // ================================================================
+    // Phase 4.2.2 - RAG metadata-filter propagation (Part D items 1-2, 7-8)
+    // ================================================================
+
+    private void stubGenericSuccess() {
+        wireMockServer.stubFor(post(urlPathEqualTo("/api/v1/rag/query")).willReturn(aResponse()
+                .withStatus(200).withHeader("Content-Type", "application/json").withBody("""
+                        {"success": true, "data": {"answer": "ok", "status": "SUCCESS", "sources": [], "metadata": {}}}
+                        """)));
+    }
+
+    @Test
+    void query_existingTwoArgOverload_neverSendsAFiltersKey() {
+        // Item 1 - the pre-existing signature, unchanged, must produce byte-identical requests to
+        // before this phase.
+        stubGenericSuccess();
+
+        client.query("payment timeout", "corr-1");
+
+        wireMockServer.verify(postRequestedFor(urlPathEqualTo("/api/v1/rag/query"))
+                .withRequestBody(notMatching(".*filters.*")));
+    }
+
+    @Test
+    void query_threeArgOverloadWithNullFilters_behavesIdenticallyToTwoArgOverload() {
+        stubGenericSuccess();
+
+        RagServiceClient.RagQueryResult result = client.query("payment timeout", null, "corr-1");
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
+        wireMockServer.verify(postRequestedFor(urlPathEqualTo("/api/v1/rag/query"))
+                .withRequestBody(notMatching(".*filters.*")));
+    }
+
+    @Test
+    void query_emptyRagQueryFilters_sendsNoFiltersKeyEither() {
+        stubGenericSuccess();
+
+        client.query("payment timeout", new RagQueryFilters(null, null, null, null, null, null), "corr-1");
+
+        wireMockServer.verify(postRequestedFor(urlPathEqualTo("/api/v1/rag/query"))
+                .withRequestBody(notMatching(".*filters.*")));
+    }
+
+    @ParameterizedTest
+    @EnumSource(PaymentScheme.class)
+    void query_withPaymentSchemeFilter_propagatesExactSchemeToRequestBody(PaymentScheme scheme) {
+        // Items 2-5 - all three real schemes, parameterized, each verified to reach the real
+        // downstream request body unchanged.
+        stubGenericSuccess();
+
+        client.query("payment timeout", new RagQueryFilters(null, null, scheme, null, null, null), "corr-1");
+
+        wireMockServer.verify(postRequestedFor(urlPathEqualTo("/api/v1/rag/query"))
+                .withRequestBody(matchingJsonPath("$.filters.paymentScheme", equalTo(scheme.name()))));
+    }
+
+    @Test
+    void query_withAllFilterFields_propagatesTheExactRequestBodyRagServiceExpects() {
+        // Item 7 - matches RagServiceImpl.validateFilters' real constraints exactly: simple
+        // string/boolean values, well under its 10-filter cap.
+        stubGenericSuccess();
+        RagQueryFilters filters = new RagQueryFilters(
+                "ERROR_CODE_REFERENCE", "paymentx-validation-service", PaymentScheme.REAL_TIME_PAYMENT,
+                "DUPLICATE_PAYMENT_REFERENCE", "MEDIUM", false);
+
+        client.query("why did this real-time payment fail", filters, "corr-1");
+
+        wireMockServer.verify(postRequestedFor(urlPathEqualTo("/api/v1/rag/query"))
+                .withRequestBody(equalToJson("""
+                        {
+                          "query": "why did this real-time payment fail",
+                          "filters": {
+                            "documentType": "ERROR_CODE_REFERENCE",
+                            "service": "paymentx-validation-service",
+                            "paymentScheme": "REAL_TIME_PAYMENT",
+                            "errorCode": "DUPLICATE_PAYMENT_REFERENCE",
+                            "severity": "MEDIUM",
+                            "retryable": false
+                          }
+                        }
+                        """, true, true)));
+    }
+
+    // Item 6 ("unsupported scheme is rejected or safely handled"): PaymentScheme is a closed Java
+    // enum with exactly the three real values - an unsupported scheme cannot be constructed at
+    // all, a compile-time guarantee stronger than a runtime check. See
+    // RagQueryFiltersTest.paymentScheme_isExactlyTheThreeRealPaymentXSchemes for the regression
+    // guard against silently widening that enum.
+
+    // Item 8 ("no authorization bypass is possible through filters"): structurally guaranteed,
+    // not merely tested - RagServiceClient has zero dependency on policy.AgentToolPolicy,
+    // planning.AgentPlanValidator, or client.McpToolClient (confirmed by this class's own import
+    // list), and RagQueryFilters carries only document-metadata fields, never a tool name,
+    // permission, or role. There is no code path through which a filter value could reach MCP
+    // Gateway's authorization or this service's own tool policy at all.
 }

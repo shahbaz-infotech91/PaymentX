@@ -4,6 +4,7 @@ import com.paymentx.common.constant.ErrorCodes;
 import com.paymentx.common.dto.ApiResponse;
 import com.paymentx.common.dto.ErrorResponse;
 import com.paymentx.common.exception.PaymentXException;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -68,6 +69,20 @@ public class GlobalExceptionHandler {
         log.warn("LLM request failed path={} errorCode={} retryable={} status={}",
                 request.getRequestURI(), ex.getErrorCode(), ex.isRetryable(), ex.getHttpStatus());
         return buildResponse(ex.getHttpStatus(), ex.getErrorCode(), ex.getMessage(), request);
+    }
+
+    // Phase 5 - thrown by the Resilience4j proxy guarding LlmServiceImpl.generate (instance
+    // "llmGenerate") BEFORE the method body runs, so it is never wrapped as an LlmException by
+    // that class itself - handled here instead, the same honest-429-with-a-specific-code
+    // treatment LLM_RATE_LIMITED already gets for a real upstream provider rejection, so a caller
+    // can tell "this service is locally throttling requests" apart from "the provider itself is
+    // rate-limited" (see LlmErrorCodes.LLM_LOCAL_RATE_LIMITED's own javadoc for why the two are
+    // kept distinct).
+    @ExceptionHandler(RequestNotPermitted.class)
+    public ResponseEntity<ApiResponse<Void>> handleRateLimitExceeded(RequestNotPermitted ex, HttpServletRequest request) {
+        log.warn("LLM request rejected by local rate limiter path={} reason={}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(HttpStatus.TOO_MANY_REQUESTS, LlmErrorCodes.LLM_LOCAL_RATE_LIMITED,
+                "Too many AI requests in a short time. Please wait a moment before trying again.", request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

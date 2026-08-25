@@ -74,6 +74,10 @@ public class LlmMetrics {
     private static final String OUTPUT_TOKENS_COUNTER = "llm_output_tokens_total";
     private static final String NOT_CONFIGURED_COUNTER = "llm_not_configured_total";
     private static final String HEALTH_CHECK_COUNTER = "llm_health_check_total";
+    // Phase 4.8.6 addition - provider.LlmProviderRouter's own fallback-attempt signal, distinct
+    // from the generic request/success/failure counters above (which are recorded by
+    // LlmServiceImpl, tagged by whichever provider actually ended up serving the request).
+    private static final String FALLBACK_COUNTER = "llm_fallback_total";
 
     private final MeterRegistry meterRegistry;
 
@@ -104,6 +108,19 @@ public class LlmMetrics {
     public void recordTokens(String provider, String model, long inputTokens, long outputTokens) {
         Counter.builder(INPUT_TOKENS_COUNTER).tag("provider", provider).tag("model", model).register(meterRegistry).increment(inputTokens);
         Counter.builder(OUTPUT_TOKENS_COUNTER).tag("provider", provider).tag("model", model).register(meterRegistry).increment(outputTokens);
+    }
+
+    // Phase 4.8.6 - recorded by LlmProviderRouter at the exact moment it decides to attempt a
+    // fallback call (before knowing whether the fallback itself succeeds) - this is the
+    // "fallback was attempted" signal; whether it then succeeded is separately visible via the
+    // normal recordSuccess/recordFailure calls LlmServiceImpl already makes, now correctly tagged
+    // by the real serving provider (see LlmServiceImpl.generate()).
+    public void recordFallback(String primaryProvider, String fallbackProvider, String reason) {
+        Counter.builder(FALLBACK_COUNTER)
+                .tag("primaryProvider", primaryProvider)
+                .tag("fallbackProvider", fallbackProvider)
+                .tag("reason", reason == null ? "unknown" : reason)
+                .register(meterRegistry).increment();
     }
 
     public void recordNotConfigured() {

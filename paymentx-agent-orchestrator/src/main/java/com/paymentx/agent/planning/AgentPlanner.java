@@ -8,6 +8,7 @@ import com.paymentx.agent.client.PromptServiceClient;
 import com.paymentx.agent.config.AgentOrchestratorProperties;
 import com.paymentx.agent.exception.AgentException;
 import com.paymentx.agent.policy.AgentToolPolicy;
+import com.paymentx.agent.registry.AgentDefinition;
 import com.paymentx.agent.state.AgentExecution;
 import com.paymentx.agent.state.AgentPlan;
 import com.paymentx.agent.state.PlanAction;
@@ -109,16 +110,31 @@ public class AgentPlanner {
         this.properties = properties;
     }
 
-    public AgentPlan plan(AgentExecution execution, String correlationId) {
+    // Phase 4.1 - definition is resolved upstream by registry.AgentRegistry and is the ONLY
+    // source of promptKey/allowedTools/maxIterations used here; the LLM's own output can never
+    // change which definition is in effect (see state.AgentPlan - it has no such field), and
+    // this method never reads properties.getAgentPromptKey()/getMaxIterations() directly anymore
+    // except as the platform-default fallback when a definition leaves a value unset.
+    public AgentPlan plan(AgentExecution execution, AgentDefinition definition, String correlationId) {
         Map<String, String> variables = new LinkedHashMap<>();
-        variables.put("availableTools", formatAvailableTools());
+        variables.put("availableTools", formatAvailableTools(definition));
         variables.put("executionHistory", formatExecutionHistory(execution));
         variables.put("userQuery", execution.getUserQuery());
         variables.put("iteration", String.valueOf(execution.getIteration()));
-        variables.put("maxIterations", String.valueOf(properties.getMaxIterations()));
+        variables.put("maxIterations", String.valueOf(effectiveMaxIterations(definition)));
 
-        String renderedPrompt = promptServiceClient.render(properties.getAgentPromptKey(), variables, correlationId);
+        String renderedPrompt = promptServiceClient.render(definition.promptKey(), variables, correlationId);
         LlmServiceClient.LlmAnswer answer = llmServiceClient.generate(renderedPrompt, correlationId);
+
+        // Phase 5 - record provider/fallback visibility on the execution (see AgentExecution's
+        // own javadoc for the exact semantics: last-call provider, whole-execution-OR fallback
+        // flag). Recorded even on a refusal below, since a refusal is still a real answer from a
+        // real, identifiable provider.
+        execution.setLastLlmProvider(answer.provider());
+        if (answer.fallbackUsed()) {
+            execution.setFallbackUsedInExecution(true);
+            execution.setLastFallbackReason(answer.fallbackReason());
+        }
 
         if (answer.refused()) {
             throw AgentException.llmRefused("LLM declined to produce a planning decision.");
@@ -127,14 +143,64 @@ public class AgentPlanner {
         return parsePlan(answer.content());
     }
 
-    private String formatAvailableTools() {
+    private int effectiveMaxIterations(AgentDefinition definition) {
+        return definition.maxIterations() != null ? definition.maxIterations() : properties.getMaxIterations();
+    }
+
+    private String formatAvailableTools(AgentDefinition definition) {
         StringBuilder sb = new StringBuilder();
         for (McpToolClient.ToolSummary tool : mcpToolClient.listTools()) {
-            if (toolPolicy.isAllowed(tool.name())) {
+            if (toolPolicy.isAllowed(definition, tool.name())) {
                 sb.append("- ").append(tool.name()).append(": ").append(tool.description()).append('\n');
+                String argumentsLine = formatArguments(tool);
+                if (!argumentsLine.isEmpty()) {
+                    sb.append("  Arguments: ").append(argumentsLine).append('\n');
+                }
             }
         }
         return sb.isEmpty() ? "(no tools currently available)" : sb.toString();
+    }
+
+    // Phase 4.8.5 remediation - renders the tool's real MCP inputSchema (exact argument key
+    // names, types, required/optional) instead of leaving the LLM to infer an argument name
+    // purely from formatAvailableTools' free-text description line above. Root cause of an
+    // observed live Gemini run producing an INVALID_TOOL_ARGUMENTS payment.lookup call
+    // (2026-08-24) - see McpToolClient.ToolSummary's own javadoc for the full trace. Does not
+    // change tool selection, permissions, or any RCA/agent reasoning rule - purely additional,
+    // already-correct schema information the MCP protocol response already carried.
+    @SuppressWarnings("unchecked")
+    private String formatArguments(McpToolClient.ToolSummary tool) {
+        Map<String, Object> properties = tool.argumentProperties();
+        if (properties == null || properties.isEmpty()) {
+            return "";
+        }
+        java.util.List<String> required = tool.requiredArguments() != null ? tool.requiredArguments() : java.util.List.of();
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : properties.entrySet()) {
+            if (!first) {
+                sb.append("; ");
+            }
+            first = false;
+            String argType = "string";
+            String argDescription = null;
+            if (entry.getValue() instanceof Map<?, ?> propertySchema) {
+                Object type = propertySchema.get("type");
+                Object description = propertySchema.get("description");
+                if (type != null) {
+                    argType = String.valueOf(type);
+                }
+                if (description != null) {
+                    argDescription = String.valueOf(description);
+                }
+            }
+            sb.append(entry.getKey()).append(" (").append(argType).append(", ")
+                    .append(required.contains(entry.getKey()) ? "required" : "optional").append(")");
+            if (argDescription != null && !argDescription.isBlank()) {
+                sb.append(" - ").append(argDescription);
+            }
+        }
+        return sb.toString();
     }
 
     private String formatExecutionHistory(AgentExecution execution) {

@@ -87,8 +87,23 @@ class LlmControllerIntegrationTest {
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
+        // Phase 4.8.4 - explicit now that application-dev.yml's own default
+        // changed to "gemini" for local/dev testing: this test exercises
+        // AnthropicLlmProvider specifically (WireMock stubs Anthropic's own
+        // /v1/messages path below), so it must pin its own provider rather
+        // than inherit whatever the active profile currently defaults to.
+        registry.add("llm.provider", () -> "anthropic");
         registry.add("llm.anthropic.api-key", () -> "integration-test-key");
         registry.add("llm.anthropic.base-url", () -> "http://localhost:" + wireMockServer.port());
+        // Phase 5 (Multi-Provider LLM Resilience Expansion) - explicit for the same reason
+        // `llm.provider` above already is: application-dev.yml's own default
+        // `fallback-providers` now includes "groq" for real local-dev continuity, which would
+        // otherwise make a 429 from Anthropic (this test's own primary) fail over to Groq -
+        // unconfigured in this test's context (no GROQ_API_KEY, no WireMock stub for it) - and
+        // surface as a misleading LLM_NOT_CONFIGURED instead of the real Anthropic 429 this test
+        // exists to verify. Same isolation precedent LlmControllerGeminiIntegrationTest's own
+        // `fallback-enabled: false` already establishes for the identical reason.
+        registry.add("llm.routing.fallback-enabled", () -> "false");
     }
 
     @AfterAll

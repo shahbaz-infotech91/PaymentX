@@ -74,6 +74,12 @@ public class ResilienceConfig {
         return retryOnMcpException("auditService");
     }
 
+    /** Phase 4.4 - client/ControlCenterClient's retry instance, same retryable-predicate pattern. */
+    @Bean
+    public RetryConfigCustomizer controlCenterRetryConfigCustomizer() {
+        return retryOnMcpException("controlCenter");
+    }
+
     private RetryConfigCustomizer retryOnMcpException(String instanceName) {
         return RetryConfigCustomizer.of(instanceName, builder -> builder.retryOnException(
                 throwable -> throwable instanceof McpException mcpException && mcpException.isRetryable()));

@@ -116,6 +116,10 @@ mcp:
   routing-service-url: http://localhost:8084
   audit-service-url: http://localhost:8085
   reconciliation-service-url: http://localhost:8087
+  # Phase 4.4 - Control Center's own, already-existing, read-only Postgres API (PostgresController).
+  # Called directly, same as routing/audit/reconciliation-service above - Control Center is not one of
+  # the two services the API Gateway currently routes to.
+  control-center-url: http://localhost:8089
   payment-connect-timeout-ms: 3000
   payment-read-timeout-ms: 5000
   routing-connect-timeout-ms: 3000
@@ -124,6 +128,8 @@ mcp:
   reconciliation-read-timeout-ms: 5000
   audit-search-connect-timeout-ms: 3000
   audit-search-read-timeout-ms: 8000
+  control-center-connect-timeout-ms: 3000
+  control-center-read-timeout-ms: 5000
   audit-write-connect-timeout-ms: 2000
   audit-write-read-timeout-ms: 3000
   # Step 44/45 - bounded pagination/output size for list/search tools (audit.search is the only one).
@@ -177,6 +183,14 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+      controlCenter:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
   retry:
     instances:
       # Step 24 - read-only tools may retry transient failures; retryable is decided per-call by
@@ -200,6 +214,12 @@ resilience4j:
         exponential-backoff-multiplier: 2
         enable-randomized-wait-factor: true
       auditService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait-factor: true
+      controlCenter:
         max-attempts: 3
         wait-duration: 500ms
         enable-exponential-backoff: true

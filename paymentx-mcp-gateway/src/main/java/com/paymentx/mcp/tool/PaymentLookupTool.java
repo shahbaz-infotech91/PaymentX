@@ -105,10 +105,12 @@ public class PaymentLookupTool implements PaymentXTool {
         this.authorizationService = authorizationService;
         this.definition = new McpToolDefinition(
                 "payment.lookup",
-                "Retrieve the full current snapshot of a payment using its payment reference. "
+                "Retrieve the full current snapshot of a payment using its payment reference, optionally including "
+                        + "its full ordered status-transition history/timeline. "
                         + "This tool is read-only and does not modify payment state.",
                 new McpSchema.JsonSchema("object", Map.of(
-                        "paymentReference", Map.of("type", "string", "description", "The payment reference assigned by the originating bank/participant.")
+                        "paymentReference", Map.of("type", "string", "description", "The payment reference assigned by the originating bank/participant."),
+                        "includeHistory", Map.of("type", "boolean", "description", "Optional, defaults to false. When true, also includes the payment's full ordered status-transition timeline (fromStatus, toStatus, reason, transitionedAt) - Phase 4.8.0.")
                 ), java.util.List.of("paymentReference"), false, null, null),
                 ToolPermissions.PAYMENT_READ,
                 ToolRiskLevel.LOW,
@@ -155,6 +157,23 @@ public class PaymentLookupTool implements PaymentXTool {
         output.put("failureReason", payment.path("failureReason").isMissingNode() ? null : payment.path("failureReason").asText(null));
         output.put("createdAt", payment.path("createdAt").asText(null));
         output.put("updatedAt", payment.path("updatedAt").asText(null));
+
+        // Phase 4.8.0 - real, ordered status-transition timeline, only fetched when explicitly
+        // requested (a second real HTTP call) - never fabricated, never merged silently by default.
+        if (Boolean.TRUE.equals(arguments.get("includeHistory"))) {
+            paymentServiceClient.getHistory(paymentReference, context.correlationId()).ifPresent(historyResult -> {
+                java.util.List<Map<String, Object>> transitions = new java.util.ArrayList<>();
+                historyResult.path("history").forEach(item -> {
+                    Map<String, Object> transition = new LinkedHashMap<>();
+                    transition.put("fromStatus", item.path("fromStatus").isMissingNode() || item.path("fromStatus").isNull() ? null : item.path("fromStatus").asText(null));
+                    transition.put("toStatus", item.path("toStatus").asText(null));
+                    transition.put("reason", item.path("reason").isMissingNode() ? null : item.path("reason").asText(null));
+                    transition.put("transitionedAt", item.path("transitionedAt").asText(null));
+                    transitions.add(transition);
+                });
+                output.put("history", transitions);
+            });
+        }
         return output;
     }
 

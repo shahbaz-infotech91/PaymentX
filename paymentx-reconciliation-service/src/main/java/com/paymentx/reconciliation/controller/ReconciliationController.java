@@ -5,6 +5,7 @@ import com.paymentx.common.dto.PageResponse;
 import com.paymentx.reconciliation.dto.BatchResponse;
 import com.paymentx.reconciliation.dto.MismatchRecordResponse;
 import com.paymentx.reconciliation.dto.MismatchSearchCriteria;
+import com.paymentx.reconciliation.dto.ReconciliationRecordResponse;
 import com.paymentx.reconciliation.dto.ReconciliationSummaryResponse;
 import com.paymentx.reconciliation.dto.SettlementFileResponse;
 import com.paymentx.reconciliation.dto.StartReconciliationRequest;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -107,6 +109,15 @@ public class ReconciliationController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"reconciliation-report-" + batchId + ".csv\"")
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .body(csv);
+    }
+
+    @GetMapping("/records")
+    @Operation(summary = "Find reconciliation records for a payment reference",
+            description = "Phase 4.6.0 - the paymentReference -> batchId/reconciliation-status bridge. "
+                    + "Most-recent-first; an empty list is a legitimate result (never reconciled, or not yet reconciled).")
+    public ResponseEntity<ApiResponse<List<ReconciliationRecordResponse>>> findRecordsByReference(
+            @RequestParam String paymentReference) {
+        return ResponseEntity.ok(ApiResponse.success(reconciliationService.findRecordsByReference(paymentReference)));
     }
 
     @GetMapping("/mismatches")

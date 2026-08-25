@@ -18,6 +18,8 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -134,5 +136,59 @@ class PaymentLookupToolTest {
                 .isInstanceOf(McpException.class)
                 .extracting(ex -> ((McpException) ex).getErrorCode())
                 .isEqualTo(McpErrorCodes.INVALID_TOOL_ARGUMENTS);
+    }
+
+    // ================================================================
+    // Phase 4.8.0 - includeHistory (Incident RCA Agent's own timeline evidence)
+    // ================================================================
+
+    @Test
+    void execute_includeHistoryTrue_realTransitions_returnsOrderedTimeline() throws Exception {
+        PaymentLookupTool tool = new PaymentLookupTool(paymentServiceClient, authorizationService);
+        when(paymentServiceClient.getByReference("PMT-1", "corr-1"))
+                .thenReturn(Optional.of(paymentJson("1234567890", "P1", "9876543210", "P2")));
+        JsonNode historyResult = objectMapper.readTree("""
+                {"payment": {"paymentReference": "PMT-1"}, "history": [
+                  {"fromStatus": "RECEIVED", "toStatus": "PROCESSING", "reason": "validation completed", "transitionedAt": "2026-08-01T00:00:10Z"},
+                  {"fromStatus": "PROCESSING", "toStatus": "FAILED", "reason": "downstream timeout", "transitionedAt": "2026-08-01T00:00:40Z"}
+                ]}
+                """);
+        when(paymentServiceClient.getHistory("PMT-1", "corr-1")).thenReturn(Optional.of(historyResult));
+
+        ToolInvocationContext ctx = new ToolInvocationContext(Set.of("PAYMENT_READ"), null, "corr-1", "trace-1", "caller1");
+        Map<String, Object> result = tool.execute(ctx, Map.of("paymentReference", "PMT-1", "includeHistory", true));
+
+        @SuppressWarnings("unchecked")
+        var history = (java.util.List<Map<String, Object>>) result.get("history");
+        assertThat(history).hasSize(2);
+        assertThat(history.get(0).get("toStatus")).isEqualTo("PROCESSING");
+        assertThat(history.get(1).get("toStatus")).isEqualTo("FAILED");
+        assertThat(history.get(1).get("reason")).isEqualTo("downstream timeout");
+    }
+
+    @Test
+    void execute_includeHistoryFalseOrAbsent_neverCallsGetHistory() throws Exception {
+        PaymentLookupTool tool = new PaymentLookupTool(paymentServiceClient, authorizationService);
+        when(paymentServiceClient.getByReference("PMT-1", "corr-1"))
+                .thenReturn(Optional.of(paymentJson("1234567890", "P1", "9876543210", "P2")));
+
+        ToolInvocationContext ctx = new ToolInvocationContext(Set.of("PAYMENT_READ"), null, "corr-1", "trace-1", "caller1");
+        Map<String, Object> result = tool.execute(ctx, Map.of("paymentReference", "PMT-1"));
+
+        assertThat(result).doesNotContainKey("history");
+        verify(paymentServiceClient, org.mockito.Mockito.never()).getHistory(any(), any());
+    }
+
+    @Test
+    void execute_includeHistoryTrue_noTransitionsRecorded_omitsHistoryKeyGracefully() throws Exception {
+        PaymentLookupTool tool = new PaymentLookupTool(paymentServiceClient, authorizationService);
+        when(paymentServiceClient.getByReference("PMT-1", "corr-1"))
+                .thenReturn(Optional.of(paymentJson("1234567890", "P1", "9876543210", "P2")));
+        when(paymentServiceClient.getHistory("PMT-1", "corr-1")).thenReturn(Optional.empty());
+
+        ToolInvocationContext ctx = new ToolInvocationContext(Set.of("PAYMENT_READ"), null, "corr-1", "trace-1", "caller1");
+        Map<String, Object> result = tool.execute(ctx, Map.of("paymentReference", "PMT-1", "includeHistory", true));
+
+        assertThat(result).doesNotContainKey("history");
     }
 }

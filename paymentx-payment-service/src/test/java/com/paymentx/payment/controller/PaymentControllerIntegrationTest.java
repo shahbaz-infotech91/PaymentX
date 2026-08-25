@@ -2,6 +2,7 @@ package com.paymentx.payment.controller;
 
 import com.paymentx.common.dto.ApiResponse;
 import com.paymentx.payment.dto.CancellationRequest;
+import com.paymentx.payment.dto.PaymentHistoryResponse;
 import com.paymentx.payment.dto.PaymentResponse;
 import com.paymentx.payment.dto.PaymentRetryRequest;
 import com.paymentx.payment.dto.PaymentStatusResponse;
@@ -10,9 +11,11 @@ import com.paymentx.payment.entity.Payment;
 import com.paymentx.payment.entity.PaymentChannel;
 import com.paymentx.payment.entity.PaymentScheme;
 import com.paymentx.payment.entity.PaymentStatus;
+import com.paymentx.payment.entity.PaymentStatusHistory;
 import com.paymentx.payment.entity.PaymentType;
 import com.paymentx.payment.repository.PaymentRepository;
 import com.paymentx.payment.repository.PaymentRetryRepository;
+import com.paymentx.payment.repository.PaymentStatusHistoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +34,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,6 +94,9 @@ class PaymentControllerIntegrationTest {
 
     @Autowired
     private PaymentRetryRepository retryRepository;
+
+    @Autowired
+    private PaymentStatusHistoryRepository statusHistoryRepository;
 
     private String baseUrl() {
         return "http://localhost:" + port + "/api/v1/payments";
@@ -154,6 +161,65 @@ class PaymentControllerIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().data().status()).isEqualTo(PaymentStatus.PROCESSING);
+    }
+
+    @Test
+    void getHistory_realTransitions_returnsOrderedTimelineWithCurrentSnapshot() {
+        Payment seeded = seedPayment(PaymentStatus.FAILED);
+        statusHistoryRepository.save(PaymentStatusHistory.builder()
+                .paymentId(seeded.getId())
+                .fromStatus(PaymentStatus.RECEIVED)
+                .toStatus(PaymentStatus.PROCESSING)
+                .reason("validation completed")
+                .transitionedAt(OffsetDateTime.now().minusMinutes(2))
+                .build());
+        statusHistoryRepository.save(PaymentStatusHistory.builder()
+                .paymentId(seeded.getId())
+                .fromStatus(PaymentStatus.PROCESSING)
+                .toStatus(PaymentStatus.FAILED)
+                .reason("downstream timeout")
+                .transitionedAt(OffsetDateTime.now().minusMinutes(1))
+                .build());
+
+        ResponseEntity<ApiResponse<PaymentHistoryResponse>> response = restTemplate.exchange(
+                baseUrl() + "/" + seeded.getPaymentReference() + "/history",
+                HttpMethod.GET, null,
+                new ParameterizedTypeReference<ApiResponse<PaymentHistoryResponse>>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        PaymentHistoryResponse body = response.getBody().data();
+        assertThat(body.payment().paymentReference()).isEqualTo(seeded.getPaymentReference());
+        assertThat(body.history()).hasSize(2);
+        assertThat(body.history().get(0).toStatus()).isEqualTo(PaymentStatus.PROCESSING);
+        assertThat(body.history().get(0).reason()).isEqualTo("validation completed");
+        assertThat(body.history().get(1).toStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(body.history().get(1).reason()).isEqualTo("downstream timeout");
+        // Ordered oldest-first (transitionedAt ASC) - a real timeline, not insertion order.
+        assertThat(body.history().get(0).transitionedAt()).isBefore(body.history().get(1).transitionedAt());
+    }
+
+    @Test
+    void getHistory_paymentWithNoRecordedTransitions_returnsEmptyListNotAnError() {
+        Payment seeded = seedPayment(PaymentStatus.RECEIVED);
+
+        ResponseEntity<ApiResponse<PaymentHistoryResponse>> response = restTemplate.exchange(
+                baseUrl() + "/" + seeded.getPaymentReference() + "/history",
+                HttpMethod.GET, null,
+                new ParameterizedTypeReference<ApiResponse<PaymentHistoryResponse>>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().data().history()).isEmpty();
+    }
+
+    @Test
+    void getHistory_nonExistentPayment_returns404() {
+        ResponseEntity<ApiResponse<Void>> response = restTemplate.exchange(
+                baseUrl() + "/DOES-NOT-EXIST/history",
+                HttpMethod.GET, null,
+                new ParameterizedTypeReference<ApiResponse<Void>>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().error().errorCode()).isEqualTo("RESOURCE_NOT_FOUND");
     }
 
     @Test

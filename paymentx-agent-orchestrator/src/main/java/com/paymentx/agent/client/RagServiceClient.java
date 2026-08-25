@@ -86,9 +86,31 @@ public class RagServiceClient {
                 .build();
     }
 
+    // Phase 4.2.2 - the pre-existing 2-arg signature is preserved verbatim and delegates to the
+    // new 3-arg overload with no filters, so every existing caller (AgentOrchestratorService,
+    // every existing test) keeps compiling and behaving identically - no request sent today gains
+    // a "filters" key it didn't have before.
     @CircuitBreaker(name = "ragService")
     @Retry(name = "ragService")
     public RagQueryResult query(String query, String correlationId) {
+        return query(query, null, correlationId);
+    }
+
+    /**
+     * Phase 4.2.2 - closes the gap the Phase 4.2.0 audit found: RAG Service's own {@code
+     * RagQueryRequest.filters} and Vector Service's {@code VectorSearchRequest.filters} already
+     * support real, database-layer metadata filtering end-to-end (confirmed by direct read of
+     * {@code RagServiceImpl.query}/{@code validateFilters} and {@code VectorServiceClient.search}
+     * this phase) - this client simply had no parameter to supply one. {@code filters} is
+     * optional; {@code null} or an empty {@link RagQueryFilters} produces the exact same request
+     * body as before this change (no {@code "filters"} key at all, matching RAG Service's own
+     * "absent/empty filters" default). No agent today constructs a non-empty {@link
+     * RagQueryFilters} - this is capability, ready for a future agent (e.g. Error Analyzer) to
+     * use, not wired into planning.AgentPlanner/state.AgentPlan in this phase.
+     */
+    @CircuitBreaker(name = "ragService")
+    @Retry(name = "ragService")
+    public RagQueryResult query(String query, RagQueryFilters filters, String correlationId) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (correlationId != null) {
@@ -97,6 +119,9 @@ public class RagServiceClient {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("query", query);
+        if (filters != null && !filters.isEmpty()) {
+            body.put("filters", filters.toMap());
+        }
 
         try {
             ResponseEntity<JsonNode> response = restTemplate.exchange(

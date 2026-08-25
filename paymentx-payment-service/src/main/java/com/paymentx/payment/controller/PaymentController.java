@@ -3,6 +3,7 @@ package com.paymentx.payment.controller;
 import com.paymentx.common.dto.ApiResponse;
 import com.paymentx.common.dto.PageResponse;
 import com.paymentx.payment.dto.CancellationRequest;
+import com.paymentx.payment.dto.PaymentHistoryResponse;
 import com.paymentx.payment.dto.PaymentResponse;
 import com.paymentx.payment.dto.PaymentRetryRequest;
 import com.paymentx.payment.dto.PaymentSearchCriteria;
@@ -77,6 +78,17 @@ public class PaymentController {
     @Operation(summary = "Get a payment's current status", description = "Lightweight status-only response, suitable for polling.")
     public ResponseEntity<ApiResponse<PaymentStatusResponse>> getStatus(@PathVariable String paymentReference) {
         PaymentStatusResponse response = paymentQueryService.getStatus(paymentReference);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @GetMapping("/{paymentReference}/history")
+    @Operation(summary = "Get a payment's full ordered status-transition history",
+            description = "Phase 4.8.0 - wires up spec item #13 (PaymentHistoryResponse/PaymentStatusHistoryItem, "
+                    + "written on every real status transition by PaymentEngineImpl/RetryScheduler/TimeoutScheduler) "
+                    + "to a real endpoint for the first time. Returns the current snapshot plus every fromStatus->toStatus "
+                    + "transition, oldest first, each with its own reason and timestamp - a real, precise timeline.")
+    public ResponseEntity<ApiResponse<PaymentHistoryResponse>> getHistory(@PathVariable String paymentReference) {
+        PaymentHistoryResponse response = paymentQueryService.getHistory(paymentReference);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

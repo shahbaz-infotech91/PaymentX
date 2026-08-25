@@ -7,8 +7,10 @@ import com.paymentx.reconciliation.dto.SettlementFileResponse;
 import com.paymentx.reconciliation.dto.StartReconciliationRequest;
 import com.paymentx.reconciliation.entity.BatchStatus;
 import com.paymentx.reconciliation.entity.BatchType;
+import com.paymentx.reconciliation.dto.ReconciliationRecordResponse;
 import com.paymentx.reconciliation.entity.MismatchRecord;
 import com.paymentx.reconciliation.entity.ReconciliationBatch;
+import com.paymentx.reconciliation.entity.ReconciliationRecord;
 import com.paymentx.reconciliation.entity.SettlementFile;
 import com.paymentx.reconciliation.event.BatchStartRequestedApplicationEvent;
 import com.paymentx.reconciliation.mapper.ReconciliationMapper;
@@ -28,6 +30,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -158,5 +161,34 @@ class ReconciliationServiceImplTest {
 
         assertThatThrownBy(() -> reconciliationService.getBatchStatus(batchId))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // Phase 4.6.0 - the paymentReference -> batchId bridge (Reconciliation Agent's own evidence source).
+
+    @Test
+    void findRecordsByReference_realRecordsExist_returnsMostRecentFirst() {
+        ReconciliationRecord record = ReconciliationRecord.builder().build();
+        ReconciliationRecordResponse response = new ReconciliationRecordResponse(
+                UUID.randomUUID(), UUID.randomUUID(), "internal-id-1", "PMT-REF-1", "BANK001",
+                null, null, null, null, null, null, null, null,
+                com.paymentx.reconciliation.entity.ReconciliationStatus.MATCHED);
+
+        when(reconciliationRecordRepository.findByReferenceIdOrderByCreatedAtDesc("PMT-REF-1"))
+                .thenReturn(List.of(record));
+        when(reconciliationMapper.toResponse(record)).thenReturn(response);
+
+        var result = reconciliationService.findRecordsByReference("PMT-REF-1");
+
+        assertThat(result).containsExactly(response);
+    }
+
+    @Test
+    void findRecordsByReference_neverReconciled_returnsEmptyListNotAnError() {
+        when(reconciliationRecordRepository.findByReferenceIdOrderByCreatedAtDesc("PMT-UNRECONCILED"))
+                .thenReturn(List.of());
+
+        var result = reconciliationService.findRecordsByReference("PMT-UNRECONCILED");
+
+        assertThat(result).isEmpty();
     }
 }

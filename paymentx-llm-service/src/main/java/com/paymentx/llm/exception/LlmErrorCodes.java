@@ -47,6 +47,13 @@ public final class LlmErrorCodes {
     public static final String LLM_CREDENTIALS_REJECTED = "LLM_CREDENTIALS_REJECTED";
     public static final String LLM_PROVIDER_TIMEOUT = "LLM_PROVIDER_TIMEOUT";
     public static final String LLM_RATE_LIMITED = "LLM_RATE_LIMITED";
+    // Phase 5 - distinct from LLM_RATE_LIMITED above (that one is the real UPSTREAM provider's
+    // 429, mapped from an actual Gemini/Anthropic response). This one never reaches the provider
+    // at all - it fires when this service's own local Resilience4j RateLimiter (instance
+    // "llmGenerate", see LlmServiceImpl.generate) rejects the call before dispatch, protecting
+    // the shared, quota-limited Gemini free tier (and Anthropic billing) from a UI double-click,
+    // duplicate browser tab, or runaway retry loop burning the whole day's budget in seconds.
+    public static final String LLM_LOCAL_RATE_LIMITED = "LLM_LOCAL_RATE_LIMITED";
     public static final String LLM_PROVIDER_UNAVAILABLE = "LLM_PROVIDER_UNAVAILABLE";
     public static final String LLM_INVALID_REQUEST = "LLM_INVALID_REQUEST";
     public static final String LLM_RESPONSE_INVALID = "LLM_RESPONSE_INVALID";

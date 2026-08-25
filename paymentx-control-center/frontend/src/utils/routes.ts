@@ -87,6 +87,14 @@ export const ROUTES: RouteDefinition[] = [
   // AI Assistant above - a distinct AI Platform capability, not an operator utility (Tools) or the
   // generic infra/business catalog (Operations' existing /metrics page).
   { path: '/ai-metrics', label: 'AI Metrics', description: 'Operational metrics for the AI Platform (LLM, RAG, MCP, Agent, Embedding, Vector, Prompt).', icon: QueryStatsOutlinedIcon, group: 'AI' },
+
+  // Phase 4.7 - AI Agent Control Center (see PAYMENTX_PHASE_4_7_AI_AGENT_CONTROL_CENTER.md). Three
+  // routes, same 'AI' group - a distinct capability from AI Assistant (any registered agent,
+  // driven by the real Agent Registry, not the chat-only interface) and from AI Metrics
+  // (operational telemetry, not execution + history).
+  { path: '/ai-agents', label: 'AI Agents', description: 'Every registered PaymentX agent and its status.', icon: SmartToyOutlinedIcon, group: 'AI' },
+  { path: '/ai-agents/execute', label: 'Execute Agent', description: 'Run any registered agent and see its real response.', icon: PlayCircleOutlineIcon, group: 'AI' },
+  { path: '/ai-agents/history', label: 'Execution History', description: 'Every real agent execution, filterable and paginated.', icon: FactCheckOutlinedIcon, group: 'AI' },
 ]
 
 export const ROUTE_GROUPS: RouteDefinition['group'][] = ['Overview', 'Payments', 'Infrastructure', 'Operations', 'Tools', 'AI']

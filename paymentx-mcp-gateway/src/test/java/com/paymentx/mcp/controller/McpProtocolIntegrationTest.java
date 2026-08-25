@@ -131,7 +131,7 @@ class McpProtocolIntegrationTest {
             McpSchema.ListToolsResult tools = client.listTools();
             assertThat(tools.tools()).extracting(McpSchema.Tool::name)
                     .containsExactlyInAnyOrder("payment.lookup", "payment.status", "routing.lookup",
-                            "reconciliation.status", "audit.search");
+                            "reconciliation.status", "audit.search", "database.statistics");
         }
     }
 

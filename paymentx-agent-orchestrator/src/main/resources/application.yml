@@ -148,6 +148,175 @@ agent:
   # See class-level javadoc above - a fixed, minimal, read-only service credential, never per-user.
   mcp-roles: PAYMENT_READ,ROUTING_READ,RECONCILIATION_READ,AUDIT_READ
 
+# Phase 4.1 - the Agent Registry. A sibling of the singular `agent:` block above, not a
+# replacement for it: `agent:` still configures the platform-wide defaults (URLs, timeouts,
+# resilience) every agent shares; `agents:` configures the set of agents themselves. The
+# "default" entry below reproduces Phase 3.8's exact single-agent behavior field-for-field
+# (same prompt key, same five-tool allow-list, same iteration/timeout budget by leaving
+# max-iterations/timeout-ms unset so AgentOrchestratorService falls back to the `agent:` block's
+# platform defaults) - any pre-Phase-4.1 request that omits agentId resolves to this entry and
+# behaves identically to before.
+#
+# Phase 4.2.3 adds the platform's first real business agent, "error-analyzer" - lowercase,
+# hyphenated, matching "default"'s own real precedent (the only other agentId value that has
+# ever existed), not the task brief's own example "ERROR_ANALYZER" verbatim, for consistency
+# with this file's one established naming convention. Its allowed-tools is the same five-tool
+# set "default" already has - every real read-only MCP tool this platform has ever registered
+# is relevant to investigating a payment failure (payment/audit/routing/reconciliation evidence,
+# see PAYMENTX_PHASE_4_2_0_ERROR_ANALYZER_DESIGN.md §4) - so no tool is withheld from it, but
+# none beyond the five that exist is added either. prompt-key references PAYMENT_ERROR_ANALYSIS
+# version 2 (V1_0_4, Phase 4.2.2) - the version compatible with AgentPlanner's real variable
+# contract; version 1 (stale, incompatible) is never referenced by any agent.
+#
+# Phase 4.3 adds the platform's second business agent, "knowledge-assistant" - same naming
+# convention. UNLIKE error-analyzer, this agent gets the SMALLEST possible tool grant, per its
+# own design brief ("smallest possible permission set"): payment.lookup/payment.status (a
+# specific payment's current state) and audit.search (what happened to it) - the exact three
+# runtime questions the brief's own examples ask ("Is payment X currently FAILED?", "What is
+# payment X status?", "What happened to payment X?"). routing.lookup/reconciliation.status are
+# deliberately NOT granted - no runtime example in the brief asks a live routing/reconciliation
+# question, and "how does routing/reconciliation work" is a documentation question this agent
+# answers via RAG, never via a tool call. capabilities omits ROUTING_ANALYSIS/
+# RECONCILIATION_ANALYSIS for the same reason (capabilities are descriptive metadata only, not a
+# security boundary - see AgentCapability's own javadoc - but should still describe what this
+# agent actually does). prompt-key references PAYMENT_KNOWLEDGE_ASSISTANT (V1_0_5, Phase 4.3) -
+# NOT PAYMENTX_KNOWLEDGE_ASSISTANT (V1_0_2, RAG Service's own unrelated internal synthesis
+# prompt, unchanged).
+agents:
+  default-agent-id: default
+  definitions:
+    - agent-id: default
+      name: PaymentX General Assistant
+      description: >-
+        The original Phase 3.8 general-purpose agent - RAG knowledge retrieval plus read-only
+        payment/routing/reconciliation/audit lookups. Preserved unchanged as the platform default
+        so every pre-Phase-4.1 caller keeps working exactly as before.
+      version: "1.0"
+      capabilities: PAYMENT_ANALYSIS,ROUTING_ANALYSIS,RECONCILIATION_ANALYSIS,KNOWLEDGE_RETRIEVAL
+      allowed-tools: payment.lookup,payment.status,routing.lookup,reconciliation.status,audit.search
+      prompt-key: PAYMENTX_AGENT_ORCHESTRATOR
+      risk-level: LOW
+      enabled: true
+    - agent-id: error-analyzer
+      name: PaymentX Error Analyzer
+      description: >-
+        Evidence-first investigation of a payment failure - collects authoritative PaymentX
+        evidence via MCP (payment status/failure reason, audit history, routing rule state,
+        reconciliation batch status) and, where real knowledge content exists, PaymentX
+        documentation via RAG, then produces a root-cause explanation that is never permitted to
+        override or invent evidence the tools themselves did not return.
+      version: "1.0"
+      capabilities: PAYMENT_ANALYSIS,ROUTING_ANALYSIS,RECONCILIATION_ANALYSIS,KNOWLEDGE_RETRIEVAL
+      allowed-tools: payment.lookup,payment.status,routing.lookup,reconciliation.status,audit.search
+      prompt-key: PAYMENT_ERROR_ANALYSIS
+      risk-level: LOW
+      enabled: true
+    - agent-id: knowledge-assistant
+      name: PaymentX Knowledge Assistant
+      description: >-
+        Read-only, RAG-first assistant that explains how PaymentX works (validation, routing,
+        idempotency, reconciliation, schemes, Kafka's role) using trusted PaymentX knowledge, and
+        - only for a specific payment's current state - authorized read-only MCP evidence
+        (payment.lookup, payment.status, audit.search). Never performs a write operation.
+      version: "1.0"
+      capabilities: KNOWLEDGE_RETRIEVAL,PAYMENT_ANALYSIS
+      allowed-tools: payment.lookup,payment.status,audit.search
+      prompt-key: PAYMENT_KNOWLEDGE_ASSISTANT
+      risk-level: LOW
+      enabled: true
+    - agent-id: fraud-detection-agent
+      name: PaymentX Fraud/Risk Analysis Agent
+      description: >-
+        Strictly read-only agent that performs conservative, evidence-based potential-risk
+        analysis for a specific payment - never a confirmed-fraud determination, since PaymentX
+        has no ML fraud model, scoring engine, anomaly detection engine, or historical fraud
+        labels (Phase 4.5.0 discovery). Gathers authoritative evidence via payment.lookup,
+        payment.status, audit.search (participant/date-scoped event frequency), and
+        reconciliation.status, combined with the Phase 4.5.1 fraud/risk RAG knowledge corpus.
+        Excludes routing.lookup (no fraud relevance found) and database.statistics (platform-wide
+        only, no participant scoping). No participant.lookup tool exists on the platform; the
+        agent must state this limitation explicitly rather than imply it can query participant
+        blacklist/status directly. Never performs a write operation.
+      version: "1.0"
+      capabilities: RISK_ANALYSIS,PAYMENT_ANALYSIS,RECONCILIATION_ANALYSIS,KNOWLEDGE_RETRIEVAL
+      allowed-tools: payment.lookup,payment.status,audit.search,reconciliation.status
+      prompt-key: PAYMENT_FRAUD_RISK_ANALYSIS
+      risk-level: LOW
+      enabled: true
+    - agent-id: reconciliation-agent
+      name: PaymentX Reconciliation Agent
+      description: >-
+        Strictly read-only agent that analyzes reconciliation state and discrepancies for a
+        specific payment or batch - never automatically corrects, resolves, reconciles, or
+        reprocesses anything. Gathers authoritative evidence via payment.lookup, payment.status,
+        audit.search, and reconciliation.status (Phase 4.6.0: now also resolvable by
+        paymentReference, not only batchId - see reconciliation-service's new
+        GET /api/v1/reconciliation/records endpoint), combined with a dedicated reconciliation
+        RAG knowledge corpus. Excludes routing.lookup (no reconciliation relevance) and
+        database.statistics (platform-wide only, no per-payment/per-batch scoping). Cannot
+        retrieve individual mismatch descriptions/resolution notes or full batch CSV reports -
+        no MCP tool wraps those endpoints. Never performs a write operation.
+      version: "1.0"
+      capabilities: RECONCILIATION_ANALYSIS,PAYMENT_ANALYSIS,KNOWLEDGE_RETRIEVAL
+      allowed-tools: payment.lookup,payment.status,audit.search,reconciliation.status
+      prompt-key: PAYMENT_RECONCILIATION_ANALYSIS
+      risk-level: LOW
+      enabled: true
+    - agent-id: incident-rca-agent
+      name: PaymentX Incident RCA Agent
+      description: >-
+        Strictly read-only agent that performs evidence-based incident root-cause analysis -
+        distinguishing FACT from CORRELATION from HYPOTHESIS, and classifying any proposed cause
+        as CONFIRMED_ROOT_CAUSE, LIKELY_ROOT_CAUSE, POSSIBLE_ROOT_CAUSE, or INSUFFICIENT_CONTEXT.
+        Never presents a correlation as a confirmed cause. Gathers authoritative evidence via
+        payment.lookup (including its Phase 4.8.0 includeHistory timeline extension),
+        payment.status, audit.search (cross-service correlation by correlationId/reference),
+        routing.lookup, and reconciliation.status, combined with the Phase 4.8.0 incident-RCA
+        methodology corpus and the existing error-analyzer knowledge base. Never automatically
+        remediates, restarts a service, alters configuration, or executes an operational
+        command - "Recommended Investigation Steps" in its own output are informational only.
+      version: "1.0"
+      capabilities: LOG_ANALYSIS,PAYMENT_ANALYSIS,ROUTING_ANALYSIS,RECONCILIATION_ANALYSIS,KNOWLEDGE_RETRIEVAL
+      allowed-tools: payment.lookup,payment.status,audit.search,routing.lookup,reconciliation.status
+      prompt-key: PAYMENT_INCIDENT_RCA
+      risk-level: LOW
+      enabled: true
+    - agent-id: database-analysis-agent
+      name: PaymentX Database Analysis Agent
+      description: >-
+        Strictly read-only agent that analyzes PaymentX database evidence - a specific payment's
+        record and event history (payment.lookup, payment.status, audit.search), reconciliation
+        state (reconciliation.status), and aggregate/schema-level evidence (database.statistics:
+        payment status distribution, table row counts) - combined with trusted PaymentX schema
+        knowledge via RAG. Never executes SQL, never modifies any data; read-only enforcement lives
+        entirely in Control Center's own hardcoded/parameterized queries and MCP's two-gate
+        authorization chain, never in this agent's prompt.
+      version: "1.0"
+      capabilities: DATABASE_ANALYSIS,PAYMENT_ANALYSIS,RECONCILIATION_ANALYSIS,KNOWLEDGE_RETRIEVAL
+      allowed-tools: payment.lookup,payment.status,audit.search,reconciliation.status,database.statistics
+      prompt-key: PAYMENT_DATABASE_ANALYSIS
+      risk-level: LOW
+      enabled: true
+    - agent-id: payment-test-agent
+      name: PaymentX Payment Test/Validation Agent
+      description: >-
+        Strictly read-only agent that validates and explains the observed state of a specific
+        payment - consolidating the payment-validation slice error-analyzer/database-analysis-
+        agent/reconciliation-agent each partially cover into one purpose-built experience.
+        Gathers authoritative evidence via payment.lookup, payment.status, audit.search, and
+        reconciliation.status, classifying every statement as FACT (directly read from a tool
+        result) or HYPOTHESIS (an inference offered to explain facts), and the overall outcome as
+        VALID, INCONSISTENT, or INSUFFICIENT_CONTEXT. Never fabricates payment state and never
+        claims a payment succeeded/failed/settled without authoritative evidence. Excludes
+        routing.lookup and database.statistics (no per-payment validation relevance). Never
+        performs a write operation - no MCP write tool exists on the platform at all.
+      version: "1.0"
+      capabilities: PAYMENT_ANALYSIS,RECONCILIATION_ANALYSIS,KNOWLEDGE_RETRIEVAL
+      allowed-tools: payment.lookup,payment.status,audit.search,reconciliation.status
+      prompt-key: PAYMENT_TEST_VALIDATION
+      risk-level: LOW
+      enabled: true
+
 # One real Resilience4j instance per downstream dependency (rag/mcp/prompt/llm) - same "four separate
 # instances, not one shared instance" + RetryConfigCustomizer-reads-a-per-instance-retryable-flag pattern
 # every prior AI Platform phase already established (see config/ResilienceConfig.java's javadoc).

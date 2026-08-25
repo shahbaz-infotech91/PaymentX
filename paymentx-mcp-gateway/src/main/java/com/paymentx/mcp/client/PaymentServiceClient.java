@@ -107,6 +107,16 @@ public class PaymentServiceClient {
         return get("/api/v1/payments/" + paymentReference + "/status", correlationId);
     }
 
+    // Phase 4.8.0 - backs the paymentReference-scoped timeline evidence Incident RCA Agent needs;
+    // calls payment-service's own real GET /api/v1/payments/{reference}/history (also added this
+    // phase, wiring up the pre-existing PaymentHistoryResponse DTO to a real endpoint for the
+    // first time). Same "404 is a business result, not an error" convention as the two methods above.
+    @CircuitBreaker(name = "paymentService")
+    @Retry(name = "paymentService")
+    public Optional<JsonNode> getHistory(String paymentReference, String correlationId) {
+        return get("/api/v1/payments/" + paymentReference + "/history", correlationId);
+    }
+
     private Optional<JsonNode> get(String path, String correlationId) {
         HttpHeaders headers = new HttpHeaders();
         if (correlationId != null) {

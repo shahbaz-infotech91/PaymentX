@@ -56,6 +56,16 @@ public record LlmHealthResponse(
         String configuredModel,
         boolean apiKeyPresent,
         String note,
-        OffsetDateTime checkedAt
+        OffsetDateTime checkedAt,
+        // Phase 5 (Multi-Provider LLM Resilience Expansion) - additive. The fields above remain
+        // exactly what they always were (the PRIMARY provider's own status only); this new field
+        // reports the SAME apiKeyPresent/configuredModel signal for every registered provider
+        // (gemini/anthropic/groq), not just the primary, so an operator can verify a fallback
+        // provider (e.g. newly-added Groq) is actually configured without needing to temporarily
+        // flip LLM_PROVIDER just to check. Never includes the key itself - same
+        // apiKeyPresent-boolean-only pattern the primary fields already established.
+        java.util.List<ProviderConfigStatus> allProviders
 ) {
+    public record ProviderConfigStatus(String provider, boolean apiKeyPresent, String configuredModel) {
+    }
 }

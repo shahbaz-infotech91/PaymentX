@@ -4,11 +4,13 @@ import com.paymentx.common.dto.PageResponse;
 import com.paymentx.reconciliation.dto.BatchResponse;
 import com.paymentx.reconciliation.dto.MismatchRecordResponse;
 import com.paymentx.reconciliation.dto.MismatchSearchCriteria;
+import com.paymentx.reconciliation.dto.ReconciliationRecordResponse;
 import com.paymentx.reconciliation.dto.ReconciliationSummaryResponse;
 import com.paymentx.reconciliation.dto.SettlementFileResponse;
 import com.paymentx.reconciliation.dto.StartReconciliationRequest;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -37,6 +39,10 @@ public interface ReconciliationService {
     ReconciliationSummaryResponse getSummary(UUID batchId);
 
     PageResponse<MismatchRecordResponse> searchMismatches(MismatchSearchCriteria criteria, int page, int size);
+
+    /** Phase 4.6.0 - the paymentReference -> batchId/reconciliation-status bridge. Empty list is a
+     *  legitimate result (never reconciled, or not yet reconciled), not an error. */
+    List<ReconciliationRecordResponse> findRecordsByReference(String paymentReference);
 
     MismatchRecordResponse resolveMismatch(UUID mismatchId, String resolvedBy, String notes);
 

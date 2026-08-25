@@ -69,7 +69,16 @@ import java.util.Map;
 @Slf4j
 public class LlmServiceClient {
 
-    public record LlmAnswer(String content, boolean refused) {
+    // Phase 5 addition - provider/fallbackUsed/fallbackReason are additive fields
+    // paymentx-llm-service's own GenerateResponse gained in Phase 4.8.6 (LlmProviderRouter) -
+    // this record previously discarded them entirely, so no caller (AgentPlanner, execution
+    // history, Control Center, the frontend) could ever tell whether a response came from
+    // Gemini (primary) or Anthropic (automatic fallback). The 2-arg constructor preserves every
+    // existing call site (all 11 in AgentPlannerTest) exactly as-is.
+    public record LlmAnswer(String content, boolean refused, String provider, boolean fallbackUsed, String fallbackReason) {
+        public LlmAnswer(String content, boolean refused) {
+            this(content, refused, null, false, null);
+        }
     }
 
     private final RestTemplate restTemplate;
@@ -104,7 +113,12 @@ public class LlmServiceClient {
             if (data == null || data.isMissingNode()) {
                 throw AgentException.llmServiceUnavailable("LLM Service returned no data.", false);
             }
-            return new LlmAnswer(data.path("content").asText(""), data.path("refused").asBoolean(false));
+            return new LlmAnswer(
+                    data.path("content").asText(""),
+                    data.path("refused").asBoolean(false),
+                    data.path("provider").isMissingNode() || data.path("provider").isNull() ? null : data.path("provider").asText(),
+                    data.path("fallbackUsed").asBoolean(false),
+                    data.path("fallbackReason").isMissingNode() || data.path("fallbackReason").isNull() ? null : data.path("fallbackReason").asText());
         } catch (HttpStatusCodeException httpError) {
             int status = httpError.getStatusCode().value();
             JsonNode errorBody = parseBodySafely(httpError.getResponseBodyAsString());

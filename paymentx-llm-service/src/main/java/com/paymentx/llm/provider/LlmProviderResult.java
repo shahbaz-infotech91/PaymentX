@@ -46,6 +46,20 @@ public record LlmProviderResult(
         long outputTokens,
         Long cacheCreationInputTokens,
         Long cacheReadInputTokens,
-        long latencyMs
+        long latencyMs,
+        // Phase 4.8.6 addition - set only by provider.LlmProviderRouter, never by
+        // AnthropicLlmProvider/GeminiLlmProvider themselves (a concrete provider has no way to
+        // know whether the caller considers it "the fallback" - that is purely the router's own
+        // routing decision). The 10-arg constructor below preserves both providers' exact
+        // existing toResult() call sites unchanged, defaulting both fields for the normal,
+        // no-fallback-involved case.
+        boolean fallbackUsed,
+        String fallbackReason
 ) {
+    public LlmProviderResult(String provider, String model, String content, String stopReason, boolean refused,
+                              long inputTokens, long outputTokens, Long cacheCreationInputTokens,
+                              Long cacheReadInputTokens, long latencyMs) {
+        this(provider, model, content, stopReason, refused, inputTokens, outputTokens,
+                cacheCreationInputTokens, cacheReadInputTokens, latencyMs, false, null);
+    }
 }

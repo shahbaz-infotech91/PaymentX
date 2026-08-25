@@ -65,9 +65,37 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ResilienceConfig {
 
+    // Phase 4.8.6 - one customizer per provider-specific circuit-breaker/retry instance name
+    // (was a single "llmProvider" customizer when only one provider bean was ever active at a
+    // time; see AnthropicLlmProvider/GeminiLlmProvider.generate's own comments for why each
+    // provider now has its own instance). Both customizers apply the exact same retryable-flag
+    // predicate this class always has - only the instance name differs.
     @Bean
-    public RetryConfigCustomizer llmProviderRetryConfigCustomizer() {
-        return RetryConfigCustomizer.of("llmProvider", builder -> builder.retryOnException(
+    public RetryConfigCustomizer llmProviderGeminiRetryConfigCustomizer() {
+        return retryableExceptionCustomizer("llmProvider-gemini");
+    }
+
+    @Bean
+    public RetryConfigCustomizer llmProviderAnthropicRetryConfigCustomizer() {
+        return retryableExceptionCustomizer("llmProvider-anthropic");
+    }
+
+    // Phase 5 (Multi-Provider LLM Resilience Expansion) - third provider, same customizer, same
+    // predicate, own independent instance name/circuit-breaker state (see application.yml).
+    @Bean
+    public RetryConfigCustomizer llmProviderGroqRetryConfigCustomizer() {
+        return retryableExceptionCustomizer("llmProvider-groq");
+    }
+
+    // Phase 5 (OpenAI last-resort paid fallback) - fourth provider, same customizer, same
+    // predicate, own independent instance name/circuit-breaker state (see application.yml).
+    @Bean
+    public RetryConfigCustomizer llmProviderOpenAiRetryConfigCustomizer() {
+        return retryableExceptionCustomizer("llmProvider-openai");
+    }
+
+    private RetryConfigCustomizer retryableExceptionCustomizer(String instanceName) {
+        return RetryConfigCustomizer.of(instanceName, builder -> builder.retryOnException(
                 throwable -> throwable instanceof LlmException llmException && llmException.isRetryable()));
     }
 }

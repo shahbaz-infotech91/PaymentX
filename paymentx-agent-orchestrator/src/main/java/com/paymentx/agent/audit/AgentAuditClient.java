@@ -98,15 +98,39 @@ public class AgentAuditClient {
                 .build();
     }
 
-    public void recordAgentRun(AgentExecution execution) {
+    public void recordAgentRun(AgentExecution execution, long latencyMs) {
         try {
             Map<String, Object> payloadMap = new LinkedHashMap<>();
+            // Phase 4.1 - explicit agentId so multi-agent audit search can distinguish which
+            // agent produced this run, rather than every run being indistinguishably
+            // "agent-orchestrator" as it was in the single-agent phase.
+            payloadMap.put("agentId", execution.getAgentId() != null ? execution.getAgentId() : "default");
             payloadMap.put("status", execution.getStatus());
             payloadMap.put("iterations", execution.getIteration());
             payloadMap.put("toolCallCount", execution.getToolCallCount());
             payloadMap.put("ragUsed", !execution.getRetrievedContext().isEmpty());
+            // Phase 4.2.3 - closes the gap PAYMENTX_PHASE_4_1_AGENT_FOUNDATION.md §11 already
+            // flagged ("not currently in the agent-run payload... worth adding, cheap addition"),
+            // now genuinely needed for Error Analyzer's own audit trail (task item 19).
+            payloadMap.put("latencyMs", latencyMs);
             payloadMap.put("toolCalls", execution.getToolCalls().stream()
                     .map(this::summarizeToolCall).toList());
+            // Phase 4.7 - closes the same kind of gap Phase 4.2.3 closed for latencyMs above, this
+            // time for Control Center's AI Agent Control Center execution-detail view: without
+            // these three fields, a historical execution (opened from Execution History, not the
+            // live synchronous response) had no way to show what was asked or what was answered.
+            // Same audit write, same event, no new persistence layer, no schema change.
+            payloadMap.put("userQuery", execution.getUserQuery());
+            payloadMap.put("paymentReference", execution.getPaymentReference());
+            payloadMap.put("answer", execution.getFinalAnswer());
+            payloadMap.put("sources", execution.getRetrievedContext().stream()
+                    .flatMap(rag -> rag.sourceLabels().stream()).toList());
+            // Phase 5 - LLM provider/fallback visibility (LlmProviderRouter, Phase 4.8.6), same
+            // audit write, no new persistence layer, so Execution History/Detail can eventually
+            // surface which provider actually answered and whether automatic fallback occurred.
+            payloadMap.put("provider", execution.getLastLlmProvider());
+            payloadMap.put("fallbackUsed", execution.isFallbackUsedInExecution());
+            payloadMap.put("fallbackReason", execution.getLastFallbackReason());
             String payload = objectMapper.writeValueAsString(payloadMap);
 
             Map<String, Object> body = new LinkedHashMap<>();

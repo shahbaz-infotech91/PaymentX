@@ -1,6 +1,7 @@
 package com.paymentx.agent.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -49,6 +50,35 @@ public record AgentExecuteRequest(
 
         @NotBlank(message = "userQuery must not be blank")
         @Size(max = 2000, message = "userQuery must be at most 2,000 characters")
-        String userQuery
+        String userQuery,
+
+        // Phase 4.1 - optional, resolved by registry.AgentRegistry against the trusted agent
+        // registry; a blank/absent value resolves to the platform's default agent, preserving
+        // every pre-Phase-4.1 caller's exact existing behavior with zero request change required.
+        String agentId,
+
+        // Phase 4.2.3 - optional. The smallest useful addition to this request for an
+        // investigative agent (see PAYMENTX_PHASE_4_2_0_ERROR_ANALYZER_DESIGN.md §9): when
+        // present, grounds the investigation directly instead of relying on the planning LLM to
+        // extract a reference from free-text userQuery (the pre-existing, still-supported
+        // pattern - see AgentE2EIntegrationTest's real "Why did PMT-123 fail?" scenario, which
+        // continues to work unchanged with this field absent). Deliberately NOT an errorCode or
+        // paymentId field - errorCode would risk the model anchoring on an unconfirmed caller
+        // guess instead of the real MCP-returned failureReason (see AgentPlanner - tool evidence,
+        // never a request field, is what a plan must be grounded in), and paymentReference is
+        // PaymentX's own real MCP-tool-recognized lookup key (PaymentLookupTool/PaymentStatusTool
+        // both take exactly this, never paymentId) - adding a second, redundant identifier field
+        // was rejected as unnecessary. Same validation pattern MCP Gateway's own
+        // PaymentLookupTool/PaymentStatusTool already enforce, kept consistent rather than
+        // inventing a different one.
+        @Pattern(regexp = "^[A-Za-z0-9_-]{1,64}$", message = "paymentReference must be a non-blank alphanumeric string up to 64 characters")
+        String paymentReference
 ) {
+    public AgentExecuteRequest(String conversationId, String userId, String userQuery) {
+        this(conversationId, userId, userQuery, null, null);
+    }
+
+    public AgentExecuteRequest(String conversationId, String userId, String userQuery, String agentId) {
+        this(conversationId, userId, userQuery, agentId, null);
+    }
 }
