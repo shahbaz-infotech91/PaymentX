@@ -45,6 +45,15 @@ import { useCreatePayment } from '../hooks/useCreatePayment'
 import { toApiError } from '../api/axiosClient'
 import { SCHEME_OPTIONS, type CredentialHeaderName, type PaymentScheme } from '../services/createPaymentService'
 
+// Verification agents offered after a real, actionable Create Payment outcome. agentId is the
+// exact, unrenamed backend registry id (paymentx-agent-orchestrator's AgentRegistry) - only the
+// button label is human-readable.
+const VERIFICATION_AGENTS = [
+  { agentId: 'database-analysis-agent', label: 'Verify with AI Agent' },
+  { agentId: 'error-analyzer', label: 'Payment Error Analysis' },
+  { agentId: 'fraud-detection-agent', label: 'Fraud / Risk Analysis' },
+] as const
+
 function createReference(): string {
   const id =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -107,6 +116,32 @@ export default function CreatePaymentPage() {
   }
 
   const outcome = createPaymentMutation.data
+
+  // Shared by the VALIDATED and DUPLICATE outcomes below - the real, editable-on-arrival
+  // handoff to any registered verification agent, always carrying the real paymentReference
+  // this specific API response returned (never hardcoded). The user must still explicitly click
+  // Execute Agent on the destination page - navigating here never runs an agent by itself.
+  function renderVerificationActions(reference: string) {
+    return (
+      <Stack spacing={0.5} sx={{ mt: 1 }}>
+        <Typography variant="caption" color="text.secondary">
+          Verify with AI:
+        </Typography>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          {VERIFICATION_AGENTS.map(({ agentId, label }) => (
+            <Button
+              key={agentId}
+              variant="outlined"
+              size="small"
+              onClick={() => navigate('/ai-agents/execute', { state: { agentId, paymentReference: reference } })}
+            >
+              {label}
+            </Button>
+          ))}
+        </Stack>
+      </Stack>
+    )
+  }
 
   return (
     <PageContainer>
@@ -301,20 +336,9 @@ export default function CreatePaymentPage() {
 
       {outcome && outcome.kind === 'VALIDATED' && (
         <Alert severity="success" action={
-          <Stack direction="row" spacing={1}>
-            <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
-              View Payment Flow
-            </Button>
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => navigate('/ai-agents/execute', {
-                state: { agentId: 'database-analysis-agent', paymentReference: outcome.paymentReference },
-              })}
-            >
-              Verify with AI Agent
-            </Button>
-          </Stack>
+          <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
+            View Payment Flow
+          </Button>
         }>
           <AlertTitle>Payment validated</AlertTitle>
           <Stack spacing={0.5}>
@@ -323,6 +347,7 @@ export default function CreatePaymentPage() {
             <Typography variant="body2">Amount: {amount} {currency}</Typography>
             {outcome.traceId && <Typography variant="body2">Trace ID: {outcome.traceId}</Typography>}
           </Stack>
+          {renderVerificationActions(outcome.paymentReference)}
         </Alert>
       )}
 
@@ -335,23 +360,13 @@ export default function CreatePaymentPage() {
 
       {outcome && outcome.kind === 'DUPLICATE' && (
         <Alert severity="warning" action={
-          <Stack direction="row" spacing={1}>
-            <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
-              View Payment Flow
-            </Button>
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => navigate('/ai-agents/execute', {
-                state: { agentId: 'database-analysis-agent', paymentReference: outcome.paymentReference },
-              })}
-            >
-              Verify with AI Agent
-            </Button>
-          </Stack>
+          <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
+            View Payment Flow
+          </Button>
         }>
           <AlertTitle>Already submitted</AlertTitle>
           {outcome.reason}
+          {renderVerificationActions(outcome.paymentReference)}
         </Alert>
       )}
 

@@ -282,4 +282,75 @@ describe('CreatePaymentPage', () => {
     expect(await screen.findByText('Rejected by validation')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Verify with AI Agent' })).not.toBeInTheDocument()
   }, FORM_TEST_TIMEOUT)
+
+  it('shows Payment Error Analysis and Fraud / Risk Analysis on a VALIDATED outcome', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'VALIDATED', paymentReference: 'CC-real-ref', traceId: 'trace-9' })
+    renderPage()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+
+    expect(await screen.findByRole('button', { name: 'Payment Error Analysis' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fraud / Risk Analysis' })).toBeInTheDocument()
+  }, FORM_TEST_TIMEOUT)
+
+  it('shows all three verification actions on a DUPLICATE outcome', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'DUPLICATE', paymentReference: 'CC-dup-ref', reason: 'Already submitted' })
+    renderPage()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+
+    expect(await screen.findByRole('button', { name: 'Verify with AI Agent' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Payment Error Analysis' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fraud / Risk Analysis' })).toBeInTheDocument()
+  }, FORM_TEST_TIMEOUT)
+
+  it('does not show Payment Error Analysis or Fraud / Risk Analysis on a REJECTED outcome', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'REJECTED', paymentReference: 'CC-rej', reason: 'Participant not eligible for scheme' })
+    renderPage()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+
+    expect(await screen.findByText('Rejected by validation')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Payment Error Analysis' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Fraud / Risk Analysis' })).not.toBeInTheDocument()
+  }, FORM_TEST_TIMEOUT)
+
+  it('navigates to /ai-agents/execute with agentId=error-analyzer and the real reference', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'VALIDATED', paymentReference: 'CC-real-ref', traceId: 'trace-9' })
+    renderPageWithAgentVerifyRoute()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+    await user.click(await screen.findByRole('button', { name: 'Payment Error Analysis' }))
+
+    expect(await screen.findByText('agent-verify-probe')).toBeInTheDocument()
+    expect(screen.getByText('agentId=error-analyzer')).toBeInTheDocument()
+    expect(screen.getByText('paymentReference=CC-real-ref')).toBeInTheDocument()
+  }, FORM_TEST_TIMEOUT)
+
+  it('navigates to /ai-agents/execute with agentId=fraud-detection-agent and the real reference', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'VALIDATED', paymentReference: 'CC-real-ref', traceId: 'trace-9' })
+    renderPageWithAgentVerifyRoute()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+    await user.click(await screen.findByRole('button', { name: 'Fraud / Risk Analysis' }))
+
+    expect(await screen.findByText('agent-verify-probe')).toBeInTheDocument()
+    expect(screen.getByText('agentId=fraud-detection-agent')).toBeInTheDocument()
+    expect(screen.getByText('paymentReference=CC-real-ref')).toBeInTheDocument()
+  }, FORM_TEST_TIMEOUT)
 })

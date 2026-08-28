@@ -205,6 +205,23 @@ describe('AiAgentExecutePage', () => {
     expect(screen.getByLabelText('Payment Reference (optional)')).not.toBeDisabled()
   })
 
+  it.each([
+    { agentId: 'error-analyzer', name: 'PaymentX Error Analyzer' },
+    { agentId: 'fraud-detection-agent', name: 'PaymentX Fraud/Risk Analysis Agent' },
+  ])('pre-populates $agentId and payment reference from router state (Create Payment handoff)', async ({ agentId, name }) => {
+    vi.mocked(fetchAgents).mockResolvedValue([
+      ...REAL_AGENTS,
+      { agentId, name, description: 'desc', version: '1.0', capabilities: [], allowedTools: [], riskLevel: 'LOW', enabled: true },
+    ])
+
+    renderPageWithRouterState({ agentId, paymentReference: 'CC-real-ref' })
+
+    await screen.findByText(name)
+    expect(screen.getByLabelText('Payment Reference (optional)')).toHaveValue('CC-real-ref')
+    expect(executeAgent).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Payment Reference (optional)')).not.toBeDisabled()
+  })
+
   it('leaves fields empty when opened standalone (no router state) - existing behavior unchanged', async () => {
     vi.mocked(fetchAgents).mockResolvedValue(REAL_AGENTS)
     renderPage()

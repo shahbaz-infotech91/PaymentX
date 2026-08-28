@@ -1,9 +1,12 @@
 /**
- * Phase 4.7 - the "/ai-agents" Dashboard page: every real, currently-registered PaymentX agent
- * (Error Analyzer, Knowledge Assistant, Database Analysis, Fraud Detection, Reconciliation - plus
- * the platform "default" agent), fetched live from Agent Orchestrator's own AgentRegistry via
- * GET /api/v1/agents - never a hardcoded five-agent list. A disabled agent (enabled=false) would
- * render here honestly too; nothing here is faked.
+ * Phase 4.7 - the "/ai-agents" Dashboard page: every real, currently-registered PaymentX agent -
+ * as of this writing the platform "default" agent plus Error Analyzer, Knowledge Assistant,
+ * Fraud Detection, Reconciliation, Incident RCA, Database Analysis, and Payment Test/Validation
+ * (8 total, all READ_ONLY/LOW risk, all E2E-proven real - see the AI Agent Inventory validation) -
+ * fetched live from Agent Orchestrator's own AgentRegistry via GET /api/v1/agents, never a
+ * hardcoded list of any size. A disabled agent (enabled=false) would render here honestly too;
+ * nothing here is faked. This count is a snapshot, not a cap - the registry, not this comment, is
+ * the source of truth for which agents actually appear.
  */
 import { Card, CardContent, Chip, Grid2 as Grid, Stack, Typography, Button } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
