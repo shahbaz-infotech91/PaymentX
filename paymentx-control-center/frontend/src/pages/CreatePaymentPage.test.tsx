@@ -13,7 +13,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@mui/material/styles'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { buildTheme } from '../theme/theme'
 import CreatePaymentPage from './CreatePaymentPage'
 import { fetchParticipants } from '../services/postgresService'
@@ -61,6 +61,35 @@ async function fillMinimumValidForm(user: ReturnType<typeof userEvent.setup>) {
 }
 
 const FORM_TEST_TIMEOUT = 15000
+
+/** Captures whatever real navigation state CreatePaymentPage passes to /ai-agents/execute. */
+function AgentVerifyStateProbe() {
+  const location = useLocation()
+  const state = location.state as { agentId?: string; paymentReference?: string } | null
+  return (
+    <div>
+      <div>agent-verify-probe</div>
+      <div>agentId={state?.agentId ?? ''}</div>
+      <div>paymentReference={state?.paymentReference ?? ''}</div>
+    </div>
+  )
+}
+
+function renderPageWithAgentVerifyRoute() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  return render(
+    <ThemeProvider theme={buildTheme('light')}>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/create-payment']}>
+          <Routes>
+            <Route path="/create-payment" element={<CreatePaymentPage />} />
+            <Route path="/ai-agents/execute" element={<AgentVerifyStateProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>,
+  )
+}
 
 describe('CreatePaymentPage', () => {
   beforeEach(() => {
@@ -205,5 +234,52 @@ describe('CreatePaymentPage', () => {
 
     resolveCreate({ kind: 'VALIDATED', paymentReference: 'CC-4', traceId: null })
     await waitFor(() => expect(createPayment).toHaveBeenCalledTimes(1))
+  }, FORM_TEST_TIMEOUT)
+
+  it('shows "Verify with AI Agent" on a VALIDATED outcome and navigates with the real reference', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'VALIDATED', paymentReference: 'CC-real-ref', traceId: 'trace-9' })
+    renderPageWithAgentVerifyRoute()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+
+    const verifyButton = await screen.findByRole('button', { name: 'Verify with AI Agent' })
+    await user.click(verifyButton)
+
+    expect(await screen.findByText('agent-verify-probe')).toBeInTheDocument()
+    expect(screen.getByText('agentId=database-analysis-agent')).toBeInTheDocument()
+    expect(screen.getByText('paymentReference=CC-real-ref')).toBeInTheDocument()
+  }, FORM_TEST_TIMEOUT)
+
+  it('shows "Verify with AI Agent" on a DUPLICATE outcome and navigates with the real reference', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'DUPLICATE', paymentReference: 'CC-dup-ref', reason: 'Already submitted' })
+    renderPageWithAgentVerifyRoute()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+
+    const verifyButton = await screen.findByRole('button', { name: 'Verify with AI Agent' })
+    await user.click(verifyButton)
+
+    expect(await screen.findByText('agent-verify-probe')).toBeInTheDocument()
+    expect(screen.getByText('agentId=database-analysis-agent')).toBeInTheDocument()
+    expect(screen.getByText('paymentReference=CC-dup-ref')).toBeInTheDocument()
+  }, FORM_TEST_TIMEOUT)
+
+  it('does not show "Verify with AI Agent" on a REJECTED outcome', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createPayment).mockResolvedValue({ kind: 'REJECTED', paymentReference: 'CC-rej', reason: 'Participant not eligible for scheme' })
+    renderPage()
+    await screen.findByLabelText('Source Participant')
+
+    await fillMinimumValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Create Payment' }))
+
+    expect(await screen.findByText('Rejected by validation')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Verify with AI Agent' })).not.toBeInTheDocument()
   }, FORM_TEST_TIMEOUT)
 })

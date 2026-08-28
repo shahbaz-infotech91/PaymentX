@@ -43,13 +43,15 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'default
 export default function AiAgentExecutePage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const preselectedAgentId = (location.state as { agentId?: string } | null)?.agentId ?? ''
+  const routerState = location.state as { agentId?: string; paymentReference?: string } | null
+  const preselectedAgentId = routerState?.agentId ?? ''
+  const preselectedPaymentReference = routerState?.paymentReference ?? ''
 
   const agents = useAgentList()
   const executeMutation = useExecuteAgent()
 
   const [agentId, setAgentId] = useState(preselectedAgentId)
-  const [paymentReference, setPaymentReference] = useState('')
+  const [paymentReference, setPaymentReference] = useState(preselectedPaymentReference)
   const [userQuery, setUserQuery] = useState('')
 
   const canSubmit = useMemo(() => agentId !== '' && userQuery.trim() !== '', [agentId, userQuery])

@@ -32,6 +32,20 @@ function renderPage() {
   )
 }
 
+/** Renders with real react-router navigation state, exactly as CreatePaymentPage's "Verify with AI Agent" produces. */
+function renderPageWithRouterState(state: { agentId?: string; paymentReference?: string }) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  return render(
+    <ThemeProvider theme={buildTheme('light')}>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[{ pathname: '/ai-agents/execute', state }]}>
+          <AiAgentExecutePage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>,
+  )
+}
+
 const REAL_AGENTS = [
   {
     agentId: 'reconciliation-agent',
@@ -164,5 +178,38 @@ describe('AiAgentExecutePage', () => {
 
     expect(await screen.findByText('Execution failed')).toBeInTheDocument()
     expect(screen.queryByText(/RECONCILED/)).not.toBeInTheDocument()
+  })
+
+  it('pre-populates agent and payment reference from real router state (Create Payment handoff)', async () => {
+    vi.mocked(fetchAgents).mockResolvedValue([
+      ...REAL_AGENTS,
+      {
+        agentId: 'database-analysis-agent',
+        name: 'PaymentX Database Analysis Agent',
+        description: 'desc',
+        version: '1.0',
+        capabilities: ['DATABASE_ANALYSIS'],
+        allowedTools: ['database.statistics'],
+        riskLevel: 'LOW',
+        enabled: true,
+      },
+    ])
+
+    renderPageWithRouterState({ agentId: 'database-analysis-agent', paymentReference: 'CC-real-ref' })
+
+    await screen.findByText('PaymentX Database Analysis Agent')
+    expect(screen.getByLabelText('Payment Reference (optional)')).toHaveValue('CC-real-ref')
+    // Pre-population must never auto-execute - the user still has to click Execute Agent.
+    expect(executeAgent).not.toHaveBeenCalled()
+    // The pre-populated reference remains a normal, editable field.
+    expect(screen.getByLabelText('Payment Reference (optional)')).not.toBeDisabled()
+  })
+
+  it('leaves fields empty when opened standalone (no router state) - existing behavior unchanged', async () => {
+    vi.mocked(fetchAgents).mockResolvedValue(REAL_AGENTS)
+    renderPage()
+
+    await screen.findByRole('button', { name: 'Execute Agent' })
+    expect(screen.getByLabelText('Payment Reference (optional)')).toHaveValue('')
   })
 })

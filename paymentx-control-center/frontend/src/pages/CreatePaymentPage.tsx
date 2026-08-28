@@ -301,9 +301,20 @@ export default function CreatePaymentPage() {
 
       {outcome && outcome.kind === 'VALIDATED' && (
         <Alert severity="success" action={
-          <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
-            View Payment Flow
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
+              View Payment Flow
+            </Button>
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => navigate('/ai-agents/execute', {
+                state: { agentId: 'database-analysis-agent', paymentReference: outcome.paymentReference },
+              })}
+            >
+              Verify with AI Agent
+            </Button>
+          </Stack>
         }>
           <AlertTitle>Payment validated</AlertTitle>
           <Stack spacing={0.5}>
@@ -324,9 +335,20 @@ export default function CreatePaymentPage() {
 
       {outcome && outcome.kind === 'DUPLICATE' && (
         <Alert severity="warning" action={
-          <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
-            View Payment Flow
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button color="inherit" size="small" onClick={() => navigate(`/payment-flow?reference=${encodeURIComponent(outcome.paymentReference)}`)}>
+              View Payment Flow
+            </Button>
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => navigate('/ai-agents/execute', {
+                state: { agentId: 'database-analysis-agent', paymentReference: outcome.paymentReference },
+              })}
+            >
+              Verify with AI Agent
+            </Button>
+          </Stack>
         }>
           <AlertTitle>Already submitted</AlertTitle>
           {outcome.reason}
