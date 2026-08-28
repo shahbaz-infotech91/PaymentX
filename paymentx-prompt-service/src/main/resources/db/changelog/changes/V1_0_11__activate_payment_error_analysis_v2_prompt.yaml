@@ -1,0 +1,40 @@
+# ====================================================================
+# Phase 5.3 (discovered during AI Agent Inventory E2E validation) - activates
+# PAYMENT_ERROR_ANALYSIS version 2.
+#
+# V1_0_4's own comment explicitly seeded version 2 as DRAFT "for whenever an
+# Error Analyzer agent definition exists to use it (not yet implemented)".
+# That precondition is now met: paymentx-agent-orchestrator's application.yml
+# `agents.definitions` now registers a real, enabled `error-analyzer` agent
+# with `prompt-key: PAYMENT_ERROR_ANALYSIS` - but nothing ever flipped
+# version 2 to ACTIVE when that agent was added, so every real
+# error-analyzer execution fails at the Prompt Service render stage
+# (404 NO_ACTIVE_VERSION), before ever reaching the LLM. Confirmed live:
+# version 1 and version 2 are both still status='DRAFT'. Version 1 must NOT
+# be activated - it uses an incompatible variable contract (V1_0_4's own
+# finding: paymentReference/status/errorCode/errorMessage, not what
+# AgentPlanner actually supplies) and rendering it would fail differently.
+# This changeset activates version 2 only, via the same UPDATE the real
+# PromptService.activateVersion() admin operation performs, satisfying the
+# `uq_prompt_version_one_active_per_template` partial unique index (no
+# conflict, since no version of this template is currently ACTIVE).
+# ====================================================================
+
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_11-activate-payment-error-analysis-v2-prompt
+      author: agent-orchestrator
+      comment: >
+        Activates PAYMENT_ERROR_ANALYSIS version 2 (AgentPlanner-compatible
+        variable contract) now that the error-analyzer agent definition
+        exists and references this prompt key. Version 1 remains DRAFT,
+        untouched, preserved for history per V1_0_4's own instruction.
+      changes:
+        - sql:
+            sql: |
+              UPDATE prompt_version
+              SET status = 'ACTIVE', updated_by = 'agent-orchestrator'
+              WHERE id = '33333333-3333-3333-3333-333333333333'
+                AND prompt_template_id = '11111111-1111-1111-1111-111111111111'
+                AND version_number = 2
+                AND status = 'DRAFT';

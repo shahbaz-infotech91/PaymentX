@@ -58,3 +58,6 @@ databaseChangeLog:
 
   - include:
       file: db/changelog/changes/V1_0_10__seed_payment_test_validation_agent_prompt.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_11__activate_payment_error_analysis_v2_prompt.yaml
