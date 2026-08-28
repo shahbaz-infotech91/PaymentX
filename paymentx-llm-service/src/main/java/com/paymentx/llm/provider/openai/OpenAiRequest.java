@@ -16,7 +16,16 @@ record OpenAiRequest(
         String model,
         List<OpenAiMessage> messages,
         @JsonProperty("max_completion_tokens") Long maxCompletionTokens,
-        Double temperature
+        Double temperature,
+        // Phase 5.2 - OpenAI-shaped tool declarations, same {type:"function", function:{name,
+        // description, parameters}} wire shape GroqRequest already models (Groq's API is a
+        // documented drop-in for OpenAI's own Chat Completions format). Null (omitted, via
+        // @JsonInclude NON_NULL above) when no tools are supplied.
+        List<java.util.Map<String, Object>> tools,
+        // Only ever set to "auto" (never sent when tools is null/empty) - matches GroqRequest's
+        // identical field, same reasoning: an OpenAI-compatible API rejects a tool call the model
+        // attempts when tool_choice is absent/inconsistent with the tools present.
+        @JsonProperty("tool_choice") String toolChoice
 ) {
 
     record OpenAiMessage(String role, String content) {

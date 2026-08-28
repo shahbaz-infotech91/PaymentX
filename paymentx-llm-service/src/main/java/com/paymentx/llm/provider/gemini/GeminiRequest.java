@@ -3,6 +3,7 @@ package com.paymentx.llm.provider.gemini;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The real request body shape POST /v1beta/models/{model}:generateContent
@@ -16,6 +17,12 @@ import java.util.List;
 record GeminiRequest(
         List<GeminiContent> contents,
         GeminiContent systemInstruction,
+        // Phase 5.2 fix - Gemini's real generateContent contract puts function declarations in a
+        // top-level `tools` field (tools: [{functionDeclarations: [...]}]), never inside
+        // generationConfig (verified against ai.google.dev/api/generate-content; the prior
+        // GeminiGenerationConfig.toolDeclrations field was both misspelled and in the wrong
+        // location - Gemini rejected it outright with "Unknown name ... at 'generation_config'").
+        List<GeminiTool> tools,
         GeminiGenerationConfig generationConfig
 ) {
 
@@ -23,6 +30,9 @@ record GeminiRequest(
     }
 
     record GeminiPart(String text) {
+    }
+
+    record GeminiTool(List<Map<String, Object>> functionDeclarations) {
     }
 
     record GeminiGenerationConfig(Long maxOutputTokens, Double temperature) {

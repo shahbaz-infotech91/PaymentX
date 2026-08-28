@@ -20,7 +20,9 @@ import org.springframework.web.client.RestClientException;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Phase 5 (OpenAI last-resort paid fallback) - the ONE and ONLY class in this service that models
@@ -109,7 +111,28 @@ public class OpenAiLlmProvider implements LlmProvider {
         }
         messages.add(new OpenAiRequest.OpenAiMessage("user", request.prompt()));
 
-        OpenAiRequest body = new OpenAiRequest(model, messages, maxTokens, request.temperature());
+        // Phase 5.2 - map provider-neutral tool definitions to OpenAI's tools/tool_choice.
+        // Mirrors GroqLlmProvider.generate's identical mapping loop.
+        List<Map<String, Object>> openAiTools = null;
+        String toolChoice = null;
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            openAiTools = request.tools().stream()
+                    .map(tool -> {
+                        Map<String, Object> function = new LinkedHashMap<>();
+                        function.put("name", tool.get("name"));
+                        function.put("description", tool.get("description"));
+                        Object inputSchema = tool.get("inputSchema");
+                        function.put("parameters", inputSchema instanceof Map ? inputSchema : new LinkedHashMap<>());
+                        Map<String, Object> declaration = new LinkedHashMap<>();
+                        declaration.put("type", "function");
+                        declaration.put("function", function);
+                        return declaration;
+                    })
+                    .toList();
+            toolChoice = "auto";
+        }
+
+        OpenAiRequest body = new OpenAiRequest(model, messages, maxTokens, request.temperature(), openAiTools, toolChoice);
 
         long start = System.currentTimeMillis();
         try {
@@ -164,7 +187,21 @@ public class OpenAiLlmProvider implements LlmProvider {
         OpenAiResponse.Choice choice = response.choices().get(0);
         String finishReason = choice.finishReason() != null ? choice.finishReason() : "unknown";
         boolean refused = "content_filter".equals(finishReason);
-        String content = choice.message() != null && choice.message().content() != null ? choice.message().content() : "";
+
+        // Phase 5.2 - mirrors GroqLlmProvider.toResult's identical tool-call handling: synthesize
+        // the same {"action":"CALL_TOOL",...} JSON content string AgentPlanner.parsePlan() already
+        // parses regardless of which provider produced it.
+        String content;
+        List<OpenAiResponse.ToolCall> toolCalls = choice.message() != null ? choice.message().toolCalls() : null;
+        if (toolCalls != null && !toolCalls.isEmpty() && toolCalls.get(0).function() != null) {
+            OpenAiResponse.FunctionCall function = toolCalls.get(0).function();
+            String toolName = function.name();
+            String argumentsJson = function.arguments() != null && !function.arguments().isBlank()
+                    ? function.arguments() : "{}";
+            content = "{\"action\": \"CALL_TOOL\", \"reasoning\": \"\", \"tool\": \"" + toolName + "\", \"arguments\": " + argumentsJson + "}";
+        } else {
+            content = choice.message() != null && choice.message().content() != null ? choice.message().content() : "";
+        }
 
         return new LlmProviderResult(
                 PROVIDER_NAME,

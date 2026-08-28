@@ -104,7 +104,7 @@ class LlmControllerRateLimiterIntegrationTest {
     @Test
     void secondCallWithinTheSameWindow_isRejectedWithHonest429_neverAFabricatedSuccess() {
         stubSuccessfulGeminiCall();
-        GenerateRequest request = new GenerateRequest("Say hello.", null, null, null, null);
+        GenerateRequest request = new GenerateRequest("Say hello.", null, null, null, null, null);
 
         ResponseEntity<ApiResponse<GenerateResponse>> first = restTemplate.exchange(
                 url("/api/v1/llm/generate"), HttpMethod.POST,

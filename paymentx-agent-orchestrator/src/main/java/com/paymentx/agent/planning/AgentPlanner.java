@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -124,7 +125,8 @@ public class AgentPlanner {
         variables.put("maxIterations", String.valueOf(effectiveMaxIterations(definition)));
 
         String renderedPrompt = promptServiceClient.render(definition.promptKey(), variables, correlationId);
-        LlmServiceClient.LlmAnswer answer = llmServiceClient.generate(renderedPrompt, correlationId);
+        ToolDefinitionBundle toolBundle = formatToolDefinitions(definition);
+        LlmServiceClient.LlmAnswer answer = llmServiceClient.generate(renderedPrompt, correlationId, toolBundle.definitions());
 
         // Phase 5 - record provider/fallback visibility on the execution (see AgentExecution's
         // own javadoc for the exact semantics: last-call provider, whole-execution-OR fallback
@@ -140,7 +142,31 @@ public class AgentPlanner {
             throw AgentException.llmRefused("LLM declined to produce a planning decision.");
         }
 
-        return parsePlan(answer.content());
+        return resolveRealToolName(parsePlan(answer.content()), toolBundle.sanitizedToRealName());
+    }
+
+    // Phase 5.2 fix - OpenAI/Groq's function-calling API rejects a tool name containing "."
+    // (regex ^[a-zA-Z0-9_-]+$), but every real MCP tool name is dotted (payment.lookup,
+    // database.statistics, ...). Converts only for the outbound, provider-facing tool
+    // declaration; the real MCP name is never lost - resolveRealToolName maps the sanitized name
+    // the LLM echoes back in its ToolCall straight back to it before anything downstream (policy
+    // check, MCP invocation, tool evidence) ever sees the plan.
+    private static String sanitizeToolName(String realName) {
+        return realName.replace('.', '_');
+    }
+
+    private record ToolDefinitionBundle(List<Map<String, Object>> definitions, Map<String, String> sanitizedToRealName) {
+    }
+
+    private AgentPlan resolveRealToolName(AgentPlan plan, Map<String, String> sanitizedToRealName) {
+        if (plan.tool() == null) {
+            return plan;
+        }
+        String realName = sanitizedToRealName.getOrDefault(plan.tool(), plan.tool());
+        if (realName.equals(plan.tool())) {
+            return plan;
+        }
+        return new AgentPlan(plan.action(), plan.reasoning(), realName, plan.arguments(), plan.ragQuery(), plan.answer());
     }
 
     private int effectiveMaxIterations(AgentDefinition definition) {
@@ -201,6 +227,42 @@ public class AgentPlanner {
             }
         }
         return sb.toString();
+    }
+
+    // Phase 5.2 - formats the actual MCP tool definitions (name, description, inputSchema)
+    // as a list of maps for serialization into the LLM Service request body.
+    // This is separate from formatAvailableTools which produces free-text for the prompt.
+    // Phase 5.2 fix - two corrections: (1) the outbound "name" is now a provider-safe sanitized
+    // name (see sanitizeToolName), with the real MCP name preserved in the returned bundle's map;
+    // (2) inputSchema is now a complete JSON Schema object ({"type":"object","properties":{...},
+    // "required":[...]}), not the bare argumentProperties map - GeminiLlmProvider/GroqLlmProvider/
+    // OpenAiLlmProvider all read schema.get("properties")/schema.get("required") from this object,
+    // which previously found neither key (argumentProperties itself has no "properties"/"required"
+    // keys), so every tool's declared parameters were silently empty regardless of its real schema.
+    private ToolDefinitionBundle formatToolDefinitions(AgentDefinition definition) {
+        List<Map<String, Object>> definitions = new java.util.ArrayList<>();
+        Map<String, String> sanitizedToRealName = new java.util.LinkedHashMap<>();
+        for (McpToolClient.ToolSummary tool : mcpToolClient.listTools()) {
+            if (toolPolicy.isAllowed(definition, tool.name())) {
+                String providerSafeName = sanitizeToolName(tool.name());
+                sanitizedToRealName.put(providerSafeName, tool.name());
+
+                Map<String, Object> def = new java.util.LinkedHashMap<>();
+                def.put("name", providerSafeName);
+                def.put("description", tool.description());
+
+                Map<String, Object> schema = new java.util.LinkedHashMap<>();
+                schema.put("type", "object");
+                schema.put("properties", tool.argumentProperties() != null ? tool.argumentProperties() : Map.of());
+                if (tool.requiredArguments() != null && !tool.requiredArguments().isEmpty()) {
+                    schema.put("required", tool.requiredArguments());
+                }
+                def.put("inputSchema", schema);
+
+                definitions.add(def);
+            }
+        }
+        return new ToolDefinitionBundle(definitions, sanitizedToRealName);
     }
 
     private String formatExecutionHistory(AgentExecution execution) {

@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.util.List;
+import java.util.Map;
 
 /**
  * English:
@@ -21,7 +23,14 @@ import jakarta.validation.constraints.Size;
  * optional per-request overrides of this service's configured defaults
  * (llm.anthropic.model/default-max-tokens) - null means "use the
  * configured default", never a silently-different hardcoded value.
- * Why it exists: Step 5/9's exact contract requirement.
+ * `tools` is an optional list of provider-neutral tool definitions
+ * (name, description, input schema) that the LLM can use for
+ * native tool/function calling. Each tool is mapped by the provider
+ * to its native API format. If a provider does not support tool
+ * calling, the tools are included in the prompt for prompt-driven
+ * structured output (the existing behavior).
+ * Why it exists: Step 5/9's exact contract requirement, extended to
+ * support provider-neutral tool definitions (Phase 5.2).
  * How it communicates with other components: bound by
  * LlmController.generate; mapped by LlmServiceImpl into a
  * provider-agnostic LlmProviderRequest.
@@ -40,7 +49,14 @@ import jakarta.validation.constraints.Size;
  * is service ke configured defaults (llm.anthropic.model/default-max-
  * tokens) ke - null ka matlab hai "configured default use karo", kabhi
  * ek silently-different hardcoded value nahi.
- * Ye kyu hai: Step 5/9 ka exact contract requirement.
+ * `tools` ek optional list hai provider-neutral tool definitions (name,
+ * description, input schema) jise LLM native tool/function calling ke
+ * liye use kar sakti hai. har tool provider apni native API format me
+ * map karta hai. agar provider tool calling support nahi karta, toh tools
+ * prompt-driven structured output ke liye prompt me include kiye gaye
+ * (existing behavior).
+ * Ye kyu hai: Step 5/9 ka exact contract requirement, provider-neutral
+ * tool definitions ke saath extend kiya gaya (Phase 5.2).
  * Dusre components se kaise communicate karta hai: LlmController.
  * generate ise bind karta hai; LlmServiceImpl ise ek provider-agnostic
  * LlmProviderRequest me map karta hai.
@@ -63,6 +79,14 @@ public record GenerateRequest(
 
         @DecimalMin(value = "0.0", message = "temperature must be at least 0.0")
         @DecimalMax(value = "1.0", message = "temperature must be at most 1.0")
-        Double temperature
+        Double temperature,
+
+        // Phase 5.2 - optional list of provider-neutral tool definitions.
+        // Each tool has a name, description, and input schema (JSON-friendly map).
+        // When present, providers map these to their native tool/function calling
+        // format. If a provider does not support native tool calling, the tools
+        // are included in the prompt for prompt-driven structured output,
+        // preserving full backward compatibility with existing call sites.
+        List<Map<String, Object>> tools
 ) {
 }

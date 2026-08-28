@@ -20,7 +20,9 @@ import org.springframework.web.client.RestClientException;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Phase 5 (Multi-Provider LLM Resilience Expansion) - the ONE and ONLY class in this service that
@@ -103,7 +105,31 @@ public class GroqLlmProvider implements LlmProvider {
         }
         messages.add(new GroqRequest.GroqMessage("user", request.prompt()));
 
-        GroqRequest body = new GroqRequest(model, messages, maxTokens, request.temperature());
+        // Phase 5.2 - map provider-neutral tool definitions to Groq's OpenAI-shaped
+        // tools/tool_choice. Mirrors GeminiLlmProvider.generate's identical mapping loop. Groq
+        // rejects a tool call the model attempts when tool_choice is absent (defaults to "none"),
+        // so tool_choice is only ever sent (as "auto") when tools is non-empty - never sent
+        // otherwise, preserving this provider's exact existing no-tools request shape.
+        List<Map<String, Object>> groqTools = null;
+        String toolChoice = null;
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            groqTools = request.tools().stream()
+                    .map(tool -> {
+                        Map<String, Object> function = new LinkedHashMap<>();
+                        function.put("name", tool.get("name"));
+                        function.put("description", tool.get("description"));
+                        Object inputSchema = tool.get("inputSchema");
+                        function.put("parameters", inputSchema instanceof Map ? inputSchema : new LinkedHashMap<>());
+                        Map<String, Object> declaration = new LinkedHashMap<>();
+                        declaration.put("type", "function");
+                        declaration.put("function", function);
+                        return declaration;
+                    })
+                    .toList();
+            toolChoice = "auto";
+        }
+
+        GroqRequest body = new GroqRequest(model, messages, maxTokens, request.temperature(), groqTools, toolChoice);
 
         long start = System.currentTimeMillis();
         try {
@@ -158,7 +184,22 @@ public class GroqLlmProvider implements LlmProvider {
         GroqResponse.Choice choice = response.choices().get(0);
         String finishReason = choice.finishReason() != null ? choice.finishReason() : "unknown";
         boolean refused = "content_filter".equals(finishReason);
-        String content = choice.message() != null && choice.message().content() != null ? choice.message().content() : "";
+
+        // Phase 5.2 - mirrors GeminiLlmProvider.toResult's identical tool-call handling: when Groq
+        // returns tool_calls, synthesize the same {"action":"CALL_TOOL",...} JSON content string
+        // AgentPlanner.parsePlan() already parses regardless of which provider produced it, so no
+        // downstream/agent-orchestrator change is needed for a second tool-calling provider.
+        String content;
+        List<GroqResponse.ToolCall> toolCalls = choice.message() != null ? choice.message().toolCalls() : null;
+        if (toolCalls != null && !toolCalls.isEmpty() && toolCalls.get(0).function() != null) {
+            GroqResponse.FunctionCall function = toolCalls.get(0).function();
+            String toolName = function.name();
+            String argumentsJson = function.arguments() != null && !function.arguments().isBlank()
+                    ? function.arguments() : "{}";
+            content = "{\"action\": \"CALL_TOOL\", \"reasoning\": \"\", \"tool\": \"" + toolName + "\", \"arguments\": " + argumentsJson + "}";
+        } else {
+            content = choice.message() != null && choice.message().content() != null ? choice.message().content() : "";
+        }
 
         return new LlmProviderResult(
                 PROVIDER_NAME,

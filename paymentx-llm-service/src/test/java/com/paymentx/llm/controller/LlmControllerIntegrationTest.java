@@ -125,7 +125,7 @@ class LlmControllerIntegrationTest {
     void generate_blankPrompt_returns400ValidationError() {
         ResponseEntity<ApiResponse<Void>> response = restTemplate.exchange(
                 url("/api/v1/llm/generate"), org.springframework.http.HttpMethod.POST,
-                new org.springframework.http.HttpEntity<>(new GenerateRequest("   ", null, null, null, null)),
+                new org.springframework.http.HttpEntity<>(new org.springframework.http.HttpEntity<>(new GenerateRequest("   ", null, null, null, null, null))),
                 new ParameterizedTypeReference<>() {
                 });
 
@@ -155,7 +155,7 @@ class LlmControllerIntegrationTest {
 
         ResponseEntity<ApiResponse<GenerateResponse>> response = restTemplate.exchange(
                 url("/api/v1/llm/generate"), org.springframework.http.HttpMethod.POST,
-                new org.springframework.http.HttpEntity<>(new GenerateRequest("Say hello.", null, null, null, null)),
+                new org.springframework.http.HttpEntity<>(new org.springframework.http.HttpEntity<>(new GenerateRequest("Say hello.", null, null, null, null, null))),
                 new ParameterizedTypeReference<>() {
                 });
 
@@ -177,7 +177,7 @@ class LlmControllerIntegrationTest {
 
         ResponseEntity<ApiResponse<Void>> response = restTemplate.exchange(
                 url("/api/v1/llm/generate"), org.springframework.http.HttpMethod.POST,
-                new org.springframework.http.HttpEntity<>(new GenerateRequest("Trigger a rate limit.", null, null, null, null)),
+                new org.springframework.http.HttpEntity<>(new org.springframework.http.HttpEntity<>(new GenerateRequest("Trigger a rate limit.", null, null, null, null, null))),
                 new ParameterizedTypeReference<>() {
                 });
 

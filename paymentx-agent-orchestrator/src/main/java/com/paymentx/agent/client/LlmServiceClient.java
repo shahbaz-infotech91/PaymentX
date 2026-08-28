@@ -23,6 +23,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -97,6 +98,12 @@ public class LlmServiceClient {
     @CircuitBreaker(name = "llmService")
     @Retry(name = "llmService")
     public LlmAnswer generate(String prompt, String correlationId) {
+        return generate(prompt, correlationId, null);
+    }
+
+    @CircuitBreaker(name = "llmService")
+    @Retry(name = "llmService")
+    public LlmAnswer generate(String prompt, String correlationId, List<Map<String, Object>> tools) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (correlationId != null) {
@@ -105,6 +112,9 @@ public class LlmServiceClient {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("prompt", prompt);
+        if (tools != null) {
+            body.put("tools", tools);
+        }
 
         try {
             ResponseEntity<JsonNode> response = restTemplate.exchange(

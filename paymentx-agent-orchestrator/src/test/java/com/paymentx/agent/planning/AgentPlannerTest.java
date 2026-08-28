@@ -86,7 +86,7 @@ class AgentPlannerTest {
     void plan_plainJson_parsesRealCallToolPlan() {
         when(mcpToolClient.listTools()).thenReturn(List.of(new McpToolClient.ToolSummary("payment.lookup", "desc")));
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"CALL_TOOL\",\"reasoning\":\"need status\",\"tool\":\"payment.lookup\",\"arguments\":{\"paymentReference\":\"PMT-123\"}}",
                 false));
 
@@ -101,7 +101,7 @@ class AgentPlannerTest {
     void plan_markdownFencedJson_isStrippedAndParsed() {
         when(mcpToolClient.listTools()).thenReturn(List.of());
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "```json\n{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"done\",\"answer\":\"the answer\"}\n```", false));
 
         AgentPlan plan = newPlanner().plan(newExecution(), DEFINITION, "corr-1");
@@ -114,7 +114,7 @@ class AgentPlannerTest {
     void plan_malformedJson_throwsPlanParseFailed() {
         when(mcpToolClient.listTools()).thenReturn(List.of());
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer("not json at all", false));
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer("not json at all", false));
 
         assertThatThrownBy(() -> newPlanner().plan(newExecution(), DEFINITION, "corr-1"))
                 .isInstanceOf(AgentException.class)
@@ -126,7 +126,7 @@ class AgentPlannerTest {
     void plan_unrecognizedAction_throwsPlanParseFailed() {
         when(mcpToolClient.listTools()).thenReturn(List.of());
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"DELETE_EVERYTHING\",\"reasoning\":\"x\"}", false));
 
         assertThatThrownBy(() -> newPlanner().plan(newExecution(), DEFINITION, "corr-1"))
@@ -139,7 +139,7 @@ class AgentPlannerTest {
     void plan_llmRefused_throwsLlmRefused() {
         when(mcpToolClient.listTools()).thenReturn(List.of());
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer("", true));
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer("", true));
 
         assertThatThrownBy(() -> newPlanner().plan(newExecution(), DEFINITION, "corr-1"))
                 .isInstanceOf(AgentException.class)
@@ -153,7 +153,7 @@ class AgentPlannerTest {
                 new McpToolClient.ToolSummary("payment.lookup", "Real read-only lookup."),
                 new McpToolClient.ToolSummary("payment.refund", "A hypothetical future write tool.")));
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
 
         newPlanner().plan(newExecution(), DEFINITION, "corr-1");
@@ -177,7 +177,7 @@ class AgentPlannerTest {
                 new McpToolClient.ToolSummary("payment.lookup", "Real read-only lookup - allowed for other agents."),
                 new McpToolClient.ToolSummary("audit.search", "Real read-only search.")));
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
 
         newPlanner().plan(newExecution(), narrowAgent, "corr-1");
@@ -203,7 +203,7 @@ class AgentPlannerTest {
                         "includeHistory", Map.of("type", "boolean", "description", "Optional timeline flag.")),
                 List.of("paymentReference"))));
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
 
         newPlanner().plan(newExecution(), DEFINITION, "corr-1");
@@ -238,7 +238,7 @@ class AgentPlannerTest {
         // provider-identity field at all (LlmAnswer is just content+refused), matching how
         // LlmServiceImpl.toResponse already makes provider/fallback identity fully transparent to
         // this service's own REST contract without AgentPlanner ever needing to know it.
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"CALL_TOOL\",\"reasoning\":\"need payment data\",\"tool\":\"payment.lookup\","
                         + "\"arguments\":{\"paymentReference\":\"LIVEE2E-3FE6115058\"}}",
                 false));
@@ -257,7 +257,7 @@ class AgentPlannerTest {
         // line when no schema was supplied.
         when(mcpToolClient.listTools()).thenReturn(List.of(new McpToolClient.ToolSummary("payment.lookup", "desc")));
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
 
         newPlanner().plan(newExecution(), DEFINITION, "corr-1");
@@ -275,11 +275,108 @@ class AgentPlannerTest {
                 Set.of(), Set.of(), "PAYMENTX_CUSTOM_TEST_PROMPT", AgentRiskLevel.LOW, true, null, null);
         when(mcpToolClient.listTools()).thenReturn(List.of());
         when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
-        when(llmServiceClient.generate(anyString(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
                 "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
 
         newPlanner().plan(newExecution(), customPromptAgent, "corr-1");
 
         verify(promptServiceClient).render(eq("PAYMENTX_CUSTOM_TEST_PROMPT"), anyMap(), any());
+    }
+
+    // ---- Phase 5.2 fix - provider-safe tool names + complete JSON Schema ----
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void plan_toolDefinitionsSentToLlm_useProviderSafeUnderscoreNames() {
+        // Defect 1 (A) - OpenAI/Groq reject a function name containing ".", but every real MCP
+        // tool name is dotted. The outbound definition's "name" must be sanitized.
+        when(mcpToolClient.listTools()).thenReturn(List.of(
+                new McpToolClient.ToolSummary("payment.lookup", "desc"),
+                new McpToolClient.ToolSummary("database.statistics", "desc")));
+        AgentDefinition multiToolAgent = new AgentDefinition("multi", "Multi", "desc", "1.0",
+                Set.of(), Set.of("payment.lookup", "database.statistics"),
+                "PAYMENTX_AGENT_ORCHESTRATOR", AgentRiskLevel.LOW, true, null, null);
+        when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+                "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
+
+        newPlanner().plan(newExecution(), multiToolAgent, "corr-1");
+
+        var toolsCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llmServiceClient).generate(anyString(), any(), toolsCaptor.capture());
+        List<Map<String, Object>> sentTools = toolsCaptor.getValue();
+        List<Object> sentNames = sentTools.stream().map(t -> t.get("name")).toList();
+        assertThat(sentNames).containsExactlyInAnyOrder("payment_lookup", "database_statistics");
+        assertThat(sentNames).noneMatch(name -> String.valueOf(name).contains("."));
+    }
+
+    @Test
+    void plan_llmReturnsSanitizedToolName_resolvedBackToRealMcpName() {
+        // Defect 1 (B) - the LLM only ever sees/echoes the sanitized name (since that's what the
+        // outbound tool declaration named it); the returned AgentPlan.tool() must be the real,
+        // original MCP name so AgentToolPolicy/McpToolClient (unchanged) keep working.
+        when(mcpToolClient.listTools()).thenReturn(List.of(
+                new McpToolClient.ToolSummary("database.statistics", "desc")));
+        AgentDefinition dbAgent = new AgentDefinition("db", "DB", "desc", "1.0",
+                Set.of(), Set.of("database.statistics"),
+                "PAYMENTX_AGENT_ORCHESTRATOR", AgentRiskLevel.LOW, true, null, null);
+        when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+                "{\"action\":\"CALL_TOOL\",\"reasoning\":\"need stats\",\"tool\":\"database_statistics\","
+                        + "\"arguments\":{\"queryType\":\"PAYMENT_STATUS_DISTRIBUTION\"}}",
+                false));
+
+        AgentPlan plan = newPlanner().plan(newExecution(), dbAgent, "corr-1");
+
+        assertThat(plan.action()).isEqualTo(PlanAction.CALL_TOOL);
+        assertThat(plan.tool()).isEqualTo("database.statistics");
+        assertThat(plan.arguments()).containsEntry("queryType", "PAYMENT_STATUS_DISTRIBUTION");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void plan_toolDefinitionsSentToLlm_haveCompleteJsonSchema() {
+        // Defect 2 (C) - inputSchema must be a full JSON Schema object (type/properties/required),
+        // not the bare argumentProperties map.
+        when(mcpToolClient.listTools()).thenReturn(List.of(new McpToolClient.ToolSummary(
+                "payment.lookup", "Retrieve a payment snapshot.",
+                Map.of(
+                        "paymentReference", Map.of("type", "string", "description", "The payment reference."),
+                        "includeHistory", Map.of("type", "boolean")),
+                List.of("paymentReference"))));
+        when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+                "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
+
+        newPlanner().plan(newExecution(), DEFINITION, "corr-1");
+
+        var toolsCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llmServiceClient).generate(anyString(), any(), toolsCaptor.capture());
+        List<Map<String, Object>> sentTools = toolsCaptor.getValue();
+        Map<String, Object> inputSchema = (Map<String, Object>) sentTools.get(0).get("inputSchema");
+        assertThat(inputSchema.get("type")).isEqualTo("object");
+        Map<String, Object> schemaProperties = (Map<String, Object>) inputSchema.get("properties");
+        assertThat(schemaProperties).containsKey("paymentReference");
+        assertThat(schemaProperties).containsKey("includeHistory");
+        assertThat((List<String>) inputSchema.get("required")).containsExactly("paymentReference");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void plan_toolWithNoSchema_omitsRequiredAndSendsEmptyProperties() {
+        when(mcpToolClient.listTools()).thenReturn(List.of(new McpToolClient.ToolSummary("payment.lookup", "desc")));
+        when(promptServiceClient.render(anyString(), anyMap(), any())).thenReturn("rendered prompt");
+        when(llmServiceClient.generate(anyString(), any(), any())).thenReturn(new LlmServiceClient.LlmAnswer(
+                "{\"action\":\"FINAL_RESPONSE\",\"reasoning\":\"x\",\"answer\":\"y\"}", false));
+
+        newPlanner().plan(newExecution(), DEFINITION, "corr-1");
+
+        var toolsCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llmServiceClient).generate(anyString(), any(), toolsCaptor.capture());
+        List<Map<String, Object>> sentTools = toolsCaptor.getValue();
+        Map<String, Object> inputSchema = (Map<String, Object>) sentTools.get(0).get("inputSchema");
+        assertThat(inputSchema.get("type")).isEqualTo("object");
+        assertThat((Map<String, Object>) inputSchema.get("properties")).isEmpty();
+        assertThat(inputSchema).doesNotContainKey("required");
     }
 }

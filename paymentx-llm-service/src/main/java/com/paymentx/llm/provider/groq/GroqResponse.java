@@ -26,7 +26,18 @@ record GroqResponse(
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Message(String role, String content) {
+    record Message(String role, String content, @JsonProperty("tool_calls") List<ToolCall> toolCalls) {
+    }
+
+    // Phase 5.2 - standard OpenAI-shaped tool_calls entry (Groq's API is a documented drop-in for
+    // this wire format - see GroqLlmProvider's own class javadoc). `arguments` is a JSON-encoded
+    // string per the OpenAI/Groq contract, not a nested object - parsed by GroqLlmProvider.toResult.
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record ToolCall(String id, String type, FunctionCall function) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record FunctionCall(String name, String arguments) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

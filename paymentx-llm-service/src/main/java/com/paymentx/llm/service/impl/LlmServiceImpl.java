@@ -108,7 +108,8 @@ public class LlmServiceImpl implements LlmService {
                 request.systemPrompt(),
                 request.model(),
                 request.maxTokens() != null ? request.maxTokens() : 0,
-                request.temperature()
+                request.temperature(),
+                request.tools()
         );
 
         try {

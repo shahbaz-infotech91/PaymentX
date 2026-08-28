@@ -257,4 +257,98 @@ class GroqLlmProviderTest {
                 .isInstanceOf(LlmException.class)
                 .satisfies(ex -> assertThat(((LlmException) ex).getErrorCode()).isEqualTo(LlmErrorCodes.LLM_RESPONSE_INVALID));
     }
+
+    // ---- Phase 5.2 - tool_choice fix (Groq rejects a tool call attempt when tool_choice is
+    // absent: "Tool choice is none, but model called a tool") ----
+
+    @Test
+    void generate_withTools_sendsToolsAndAutoToolChoice() {
+        wireMockServer.stubFor(post(urlPathEqualTo("/chat/completions")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("""
+                        {
+                          "model": "openai/gpt-oss-120b",
+                          "choices": [
+                            {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                          ],
+                          "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
+                        }
+                        """)));
+
+        LlmProviderRequest request = new LlmProviderRequest("What is the payment status distribution?", null, null, 0, null,
+                java.util.List.of(java.util.Map.of(
+                        "name", "database_statistics",
+                        "description", "Retrieve read-only aggregate PaymentX database evidence.",
+                        "inputSchema", java.util.Map.of(
+                                "type", "object",
+                                "properties", java.util.Map.of("queryType", java.util.Map.of("type", "string")),
+                                "required", java.util.List.of("queryType")))));
+
+        provider.generate(request);
+
+        wireMockServer.verify(postRequestedFor(urlPathEqualTo("/chat/completions"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.tool_choice", equalTo("auto")))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.tools[0].type", equalTo("function")))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.tools[0].function.name", equalTo("database_statistics"))));
+    }
+
+    @Test
+    void generate_withoutTools_omitsToolChoiceAndTools() {
+        wireMockServer.stubFor(post(urlPathEqualTo("/chat/completions")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("""
+                        {
+                          "model": "openai/gpt-oss-120b",
+                          "choices": [
+                            {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                          ],
+                          "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
+                        }
+                        """)));
+
+        provider.generate(defaultRequest());
+
+        String requestBody = wireMockServer.findAll(postRequestedFor(urlPathEqualTo("/chat/completions"))).get(0).getBodyAsString();
+        assertThat(requestBody).doesNotContain("tool_choice");
+        assertThat(requestBody).doesNotContain("\"tools\"");
+    }
+
+    @Test
+    void generate_toolCallResponse_returnsCallToolJsonContentForAgentPlanner() {
+        wireMockServer.stubFor(post(urlPathEqualTo("/chat/completions")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("""
+                        {
+                          "model": "openai/gpt-oss-120b",
+                          "choices": [
+                            {
+                              "index": 0,
+                              "message": {
+                                "role": "assistant",
+                                "content": null,
+                                "tool_calls": [
+                                  {"id": "call_1", "type": "function", "function": {"name": "database_statistics", "arguments": "{\\"queryType\\":\\"PAYMENT_STATUS_DISTRIBUTION\\"}"}}
+                                ]
+                              },
+                              "finish_reason": "tool_calls"
+                            }
+                          ],
+                          "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+                        }
+                        """)));
+
+        LlmProviderRequest request = new LlmProviderRequest("What is the payment status distribution?", null, null, 0, null,
+                java.util.List.of(java.util.Map.of("name", "database_statistics", "description", "d",
+                        "inputSchema", java.util.Map.of("type", "object"))));
+
+        LlmProviderResult result = provider.generate(request);
+
+        assertThat(result.content()).isEqualTo(
+                "{\"action\": \"CALL_TOOL\", \"reasoning\": \"\", \"tool\": \"database_statistics\", "
+                        + "\"arguments\": {\"queryType\":\"PAYMENT_STATUS_DISTRIBUTION\"}}");
+        assertThat(result.stopReason()).isEqualTo("tool_calls");
+    }
 }

@@ -146,7 +146,11 @@ agent:
   llm-read-timeout-ms: 60000
 
   # See class-level javadoc above - a fixed, minimal, read-only service credential, never per-user.
-  mcp-roles: PAYMENT_READ,ROUTING_READ,RECONCILIATION_READ,AUDIT_READ
+  # DATABASE_READ added - database.statistics (LOW risk, READ_ONLY, MCP Gateway's own catalog)
+  # is a real tool database-analysis-agent's allowedTools already lists; this credential's own
+  # comment above was stale (still said "four" real READ permissions) once that tool/permission
+  # was registered - this brings the grant in line with what already legitimately exists.
+  mcp-roles: PAYMENT_READ,ROUTING_READ,RECONCILIATION_READ,AUDIT_READ,DATABASE_READ
 
 # Phase 4.1 - the Agent Registry. A sibling of the singular `agent:` block above, not a
 # replacement for it: `agent:` still configures the platform-wide defaults (URLs, timeouts,

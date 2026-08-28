@@ -3,6 +3,7 @@ package com.paymentx.llm.provider.gemini;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The real response body shape POST /v1beta/models/{model}:generateContent
@@ -30,7 +31,7 @@ record GeminiResponse(
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Part(String text) {
+    record Part(String text, Map<String, Object> functionCall) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

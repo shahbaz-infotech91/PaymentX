@@ -272,4 +272,67 @@ class GeminiLlmProviderTest {
         assertThatThrownBy(() -> provider.generate(defaultRequest()))
                 .isInstanceOf(LlmException.class);
     }
+
+    // ---- Phase 5.2 fix - functionDeclarations belongs under a top-level `tools` field, never
+    // inside generationConfig (Gemini previously rejected the misplaced/misspelled field with a
+    // real "Unknown name ... at 'generation_config'" 400). ----
+
+    @Test
+    void generate_withTools_sendsTopLevelFunctionDeclarations_notInsideGenerationConfig() {
+        wireMockServer.stubFor(post(urlPathEqualTo("/v1beta/models/gemini-3.7-flash:generateContent")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("""
+                        {
+                          "candidates": [{"content": {"role": "model", "parts": [{"text": "ok"}]}, "finishReason": "STOP"}],
+                          "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 2, "totalTokenCount": 12}
+                        }
+                        """)));
+
+        LlmProviderRequest request = new LlmProviderRequest("What is the payment status distribution?", null, null, 0, null,
+                java.util.List.of(java.util.Map.of(
+                        "name", "database_statistics",
+                        "description", "Retrieve read-only aggregate PaymentX database evidence.",
+                        "inputSchema", java.util.Map.of(
+                                "type", "object",
+                                "properties", java.util.Map.of("queryType", java.util.Map.of("type", "string")),
+                                "required", java.util.List.of("queryType")))));
+
+        provider.generate(request);
+
+        wireMockServer.verify(postRequestedFor(urlPathEqualTo("/v1beta/models/gemini-3.7-flash:generateContent"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
+                        "$.tools[0].functionDeclarations[0].name", equalTo("database_statistics")))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.notMatching(".*generationConfig.*toolDeclrations.*"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.notMatching(".*\"generationConfig\":\\{[^}]*\"functionDeclarations\".*")));
+    }
+
+    @Test
+    void generate_toolUseFinishReason_returnsCallToolJsonContentForAgentPlanner() {
+        wireMockServer.stubFor(post(urlPathEqualTo("/v1beta/models/gemini-3.7-flash:generateContent")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("""
+                        {
+                          "candidates": [
+                            {
+                              "content": {"role": "model", "parts": [{"functionCall": {"name": "database_statistics", "arguments": {"queryType": "PAYMENT_STATUS_DISTRIBUTION"}}}]},
+                              "finishReason": "tool_use"
+                            }
+                          ],
+                          "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5, "totalTokenCount": 15}
+                        }
+                        """)));
+
+        LlmProviderRequest request = new LlmProviderRequest("What is the payment status distribution?", null, null, 0, null,
+                java.util.List.of(java.util.Map.of("name", "database_statistics", "description", "d",
+                        "inputSchema", java.util.Map.of("type", "object"))));
+
+        LlmProviderResult result = provider.generate(request);
+
+        assertThat(result.content()).isEqualTo(
+                "{\"action\": \"CALL_TOOL\", \"reasoning\": \"\", \"tool\": \"database_statistics\", "
+                        + "\"arguments\": {\"queryType\":\"PAYMENT_STATUS_DISTRIBUTION\"}}");
+        assertThat(result.stopReason()).isEqualTo("tool_use");
+    }
 }

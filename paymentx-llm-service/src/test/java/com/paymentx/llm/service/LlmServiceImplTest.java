@@ -82,7 +82,7 @@ class LlmServiceImplTest {
         when(llmProvider.generate(any(LlmProviderRequest.class))).thenReturn(new LlmProviderResult(
                 "anthropic", "claude-opus-5", "The answer is 42.", "end_turn", false, 100, 20, null, null, 350));
 
-        GenerateResponse response = llmService.generate(new GenerateRequest("What is the answer?", null, null, null, null));
+        GenerateResponse response = llmService.generate(new GenerateRequest("What is the answer?", null, null, null, null, null));
 
         assertThat(response.provider()).isEqualTo("anthropic");
         assertThat(response.model()).isEqualTo("claude-opus-5");
@@ -103,7 +103,7 @@ class LlmServiceImplTest {
         when(llmProvider.generate(any(LlmProviderRequest.class))).thenReturn(new LlmProviderResult(
                 "anthropic", "claude-opus-5", "", "refusal", true, 40, 0, null, null, 120));
 
-        GenerateResponse response = llmService.generate(new GenerateRequest("Do something unsafe.", null, null, null, null));
+        GenerateResponse response = llmService.generate(new GenerateRequest("Do something unsafe.", null, null, null, null, null));
 
         assertThat(response.refused()).isTrue();
         assertThat(response.stopReason()).isEqualTo("refusal");
@@ -117,7 +117,7 @@ class LlmServiceImplTest {
         when(llmProvider.generate(any(LlmProviderRequest.class)))
                 .thenThrow(LlmException.rateLimited("too many requests"));
 
-        assertThatThrownBy(() -> llmService.generate(new GenerateRequest("Hello", null, null, null, null)))
+        assertThatThrownBy(() -> llmService.generate(new GenerateRequest("Hello", null, null, null, null, null)))
                 .isInstanceOf(LlmException.class)
                 .satisfies(ex -> assertThat(((LlmException) ex).getErrorCode()).isEqualTo(LlmErrorCodes.LLM_RATE_LIMITED));
     }
@@ -198,7 +198,7 @@ class LlmServiceImplTest {
         when(llmProvider.generate(any(LlmProviderRequest.class))).thenReturn(new LlmProviderResult(
                 "gemini", "gemini-3.7-flash", "The answer is 42.", "STOP", false, 100, 20, null, null, 350));
 
-        GenerateResponse response = llmService.generate(new GenerateRequest("What is the answer?", null, null, null, null));
+        GenerateResponse response = llmService.generate(new GenerateRequest("What is the answer?", null, null, null, null, null));
 
         assertThat(response.provider()).isEqualTo("gemini");
         assertThat(response.model()).isEqualTo("gemini-3.7-flash");

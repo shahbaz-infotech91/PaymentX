@@ -5,6 +5,7 @@ import com.paymentx.llm.exception.LlmException;
 import com.paymentx.llm.provider.LlmProvider;
 import com.paymentx.llm.provider.LlmProviderRequest;
 import com.paymentx.llm.provider.LlmProviderResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import jakarta.annotation.PostConstruct;
@@ -20,6 +21,7 @@ import org.springframework.web.client.RestClientException;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The ONE and ONLY class in this service that models a Gemini-specific wire
@@ -58,6 +60,7 @@ public class GeminiLlmProvider implements LlmProvider {
 
     private final LlmProperties properties;
     private RestClient restClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public GeminiLlmProvider(LlmProperties properties) {
         this.properties = properties;
@@ -122,10 +125,44 @@ public class GeminiLlmProvider implements LlmProvider {
         GeminiRequest.GeminiContent systemInstruction = request.systemPrompt() != null && !request.systemPrompt().isBlank()
                 ? new GeminiRequest.GeminiContent(null, List.of(new GeminiRequest.GeminiPart(request.systemPrompt())))
                 : null;
+
+        // Phase 5.2 - convert provider-neutral tool definitions to Gemini function declarations
+        List<Map<String, Object>> functionDeclarations = null;
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            functionDeclarations = request.tools().stream()
+                    .map(tool -> {
+                        Map<String, Object> declaration = new java.util.LinkedHashMap<>();
+                        declaration.put("name", tool.get("name"));
+                        declaration.put("description", tool.get("description"));
+                        // Convert inputSchema to Gemini's parameters format
+                        Object inputSchema = tool.get("inputSchema");
+                        if (inputSchema instanceof Map) {
+                            Map<String, Object> schema = (Map<String, Object>) inputSchema;
+                            Map<String, Object> parameters = new java.util.LinkedHashMap<>();
+                            parameters.put("type", "object");
+                            Object properties = schema.get("properties");
+                            if (properties instanceof Map) {
+                                parameters.put("properties", properties);
+                            }
+                            Object required = schema.get("required");
+                            if (required instanceof List) {
+                                parameters.put("required", required);
+                            }
+                            declaration.put("parameters", parameters);
+                        } else {
+                            declaration.put("parameters", new java.util.LinkedHashMap<>());
+                        }
+                        return declaration;
+                    })
+                    .toList();
+        }
+
         GeminiRequest.GeminiGenerationConfig generationConfig = new GeminiRequest.GeminiGenerationConfig(
                 maxTokens, request.temperature());
+        List<GeminiRequest.GeminiTool> tools = functionDeclarations != null
+                ? List.of(new GeminiRequest.GeminiTool(functionDeclarations)) : null;
 
-        GeminiRequest body = new GeminiRequest(List.of(userContent), systemInstruction, generationConfig);
+        GeminiRequest body = new GeminiRequest(List.of(userContent), systemInstruction, tools, generationConfig);
 
         long start = System.currentTimeMillis();
         try {
@@ -202,13 +239,47 @@ public class GeminiLlmProvider implements LlmProvider {
         boolean refused = "SAFETY".equals(finishReason) || "RECITATION".equals(finishReason)
                 || "PROHIBITED_CONTENT".equals(finishReason);
 
-        String content = candidate.content() != null && candidate.content().parts() != null
-                ? candidate.content().parts().stream()
+        // Phase 5.2 - check for Gemini function/tool call
+        String content;
+        String toolName = null;
+        Map<String, Object> toolArguments = null;
+        if ("tool_use".equals(finishReason) && candidate.content() != null && candidate.content().parts() != null) {
+            // Gemini returns function call in the first part
+            GeminiResponse.Part part = candidate.content().parts().get(0);
+            if (part.functionCall() != null) {
+                toolName = (String) part.functionCall().get("name");
+                toolArguments = (Map<String, Object>) part.functionCall().get("arguments");
+                // Build content JSON that AgentPlanner.parsePlan() can parse:
+                // {"action": "CALL_TOOL", "reasoning": "", "tool": "tool_name", "arguments": {...}}
+                StringBuilder argsJson = new StringBuilder();
+                if (toolArguments != null && !toolArguments.isEmpty()) {
+                    try {
+                        argsJson.append(objectMapper.writeValueAsString(toolArguments));
+                    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                        throw LlmException.responseInvalid(
+                                "Gemini provider returned a function call whose arguments could not be serialized: " + e.getMessage());
+                    }
+                }
+                content = "{\"action\": \"CALL_TOOL\", \"reasoning\": \"\", \"tool\": \"" + toolName + "\", \"arguments\": " + argsJson.toString() + "}";
+            } else {
+                // Fallback: no functionCall in part, treat as regular content
+                content = candidate.content().parts().stream()
                         .map(GeminiResponse.Part::text)
                         .filter(t -> t != null)
-                        .reduce("", String::concat)
-                : "";
+                        .reduce("", String::concat);
+            }
+        } else {
+            // Regular content extraction (no tool call)
+            content = candidate.content() != null && candidate.content().parts() != null
+                    ? candidate.content().parts().stream()
+                            .map(GeminiResponse.Part::text)
+                            .filter(t -> t != null)
+                            .reduce("", String::concat)
+                    : "";
+        }
 
+        // Build LlmProviderResult
+        // For tool calls, content is the JSON string; stopReason is "tool_use"
         return new LlmProviderResult(
                 PROVIDER_NAME,
                 actualModel,
