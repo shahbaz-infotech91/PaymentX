@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1_0_10-widen-payment-scheme-column
+      author: shahbaz
+      comment: >
+        scheme was VARCHAR(16), but PaymentScheme.REAL_TIME_PAYMENT is 18
+        characters - any real REAL_TIME_PAYMENT payment failed at INSERT
+        with "value too long for type character varying(16)" (found live:
+        every REAL_TIME_PAYMENT validation succeeded but the consumer's
+        insert then aborted, redelivering forever). Widened to VARCHAR(32),
+        comfortably covering all three current PaymentScheme values and
+        reasonable future ones.
+      changes:
+        - modifyDataType:
+            tableName: payment
+            columnName: scheme
+            newDataType: VARCHAR(32)

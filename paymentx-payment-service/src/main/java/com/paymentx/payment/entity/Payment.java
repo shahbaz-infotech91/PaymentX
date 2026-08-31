@@ -64,7 +64,7 @@ public class Payment extends Auditable {
     private String correlationId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "scheme", nullable = false, length = 16)
+    @Column(name = "scheme", nullable = false, length = 32)
     private PaymentScheme scheme;
 
     @Enumerated(EnumType.STRING)

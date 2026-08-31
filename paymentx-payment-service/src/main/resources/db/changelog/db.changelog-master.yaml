@@ -51,3 +51,6 @@ databaseChangeLog:
 
   - include:
       file: db/changelog/changes/V1_0_9__improve_payment_settlement_table.yaml
+
+  - include:
+      file: db/changelog/changes/V1_0_10__widen_payment_scheme_column.yaml
